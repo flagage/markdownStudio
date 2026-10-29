@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('workspace', {
     ipcRenderer.invoke('workspace:rename', sourcePath, newName),
   duplicate: (sourcePath: string) =>
     ipcRenderer.invoke('workspace:duplicate', sourcePath),
+  delete: (targetPath: string) => ipcRenderer.invoke('workspace:delete', targetPath),
   listTemplates: () => ipcRenderer.invoke('templates:list'),
   createTemplate: (name: string, content: string) =>
     ipcRenderer.invoke('templates:create', name, content),

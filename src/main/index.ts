@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
-import { readdir, readFile, writeFile, mkdir, stat, lstat, rename, copyFile } from 'node:fs/promises'
+import { readdir, readFile, writeFile, mkdir, stat, lstat, rename, copyFile, rm } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
@@ -296,6 +296,26 @@ ipcMain.handle('workspace:duplicate', async (_event, sourcePath: string) => {
       copyNumber += 1
     }
   }
+})
+
+ipcMain.handle('workspace:delete', async (_event, targetPath: string) => {
+  const target = resolveInsideWorkspace(targetPath)
+  const relativeTarget = path.relative(workspaceRoot!, target)
+  if (!relativeTarget) {
+    throw new Error('Le dossier de travail ne peut pas être supprimé.')
+  }
+
+  let parent = workspaceRoot!
+  for (const part of path.dirname(relativeTarget).split(path.sep).filter(Boolean)) {
+    parent = path.join(parent, part)
+    const parentStats = await lstat(parent)
+    if (!parentStats.isDirectory() || parentStats.isSymbolicLink()) {
+      throw new Error('La suppression à travers un lien symbolique n’est pas autorisée.')
+    }
+  }
+
+  await lstat(target)
+  await rm(target, { recursive: true })
 })
 
 ipcMain.handle('templates:list', () => readUserTemplates())

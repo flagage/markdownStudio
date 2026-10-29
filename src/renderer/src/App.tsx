@@ -37,6 +37,13 @@ function updateMovedPath(filePath: string, sourcePath: string, destinationPath: 
   return [destinationPath, ...remainingParts].filter(Boolean).join(separator)
 }
 
+function isPathWithinEntry(filePath: string, entryPath: string): boolean {
+  const pathParts = filePath.split(/[\\/]/)
+  const entryParts = entryPath.split(/[\\/]/)
+  return entryParts.length <= pathParts.length &&
+    entryParts.every((part, index) => pathParts[index] === part)
+}
+
 export default function App() {
   const [theme, setTheme] = useState<Theme>(() => {
     const savedTheme = window.localStorage.getItem('markdown-studio-theme')
@@ -326,6 +333,48 @@ export default function App() {
     if (!(await saveAllDocuments())) return
     try {
       await window.workspace.duplicate(entry.path)
+      const nextEntries = await window.workspace.list(directory)
+      setEntries(nextEntries)
+      setError(null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    }
+  }
+
+  async function deleteEntry(entry: WorkspaceEntry) {
+    setFileContextMenu(null)
+    const targetType = entry.kind === 'directory' ? 'dossier' : 'fichier'
+    const scope = entry.kind === 'directory' ? ' et tout son contenu' : ''
+    if (!window.confirm(`Supprimer le ${targetType} « ${entry.name} »${scope} ? Cette action est irréversible.`)) {
+      return
+    }
+    if (!(await saveAllDocuments())) return
+
+    try {
+      await window.workspace.delete(entry.path)
+      const deletedDocuments = documentsRef.current.filter((document) =>
+        isPathWithinEntry(document.path, entry.path)
+      )
+      const remainingDocuments = documentsRef.current.filter((document) =>
+        !isPathWithinEntry(document.path, entry.path)
+      )
+      const previousDocumentIndex = deletedDocuments.reduce(
+        (index, document) => Math.min(
+          index,
+          documentsRef.current.findIndex((item) => item.path === document.path)
+        ),
+        documentsRef.current.length
+      )
+      const nextActivePath = activePath && isPathWithinEntry(activePath, entry.path)
+        ? remainingDocuments[Math.max(0, previousDocumentIndex - 1)]?.path ??
+          remainingDocuments[0]?.path ?? null
+        : activePath
+      setDocuments(remainingDocuments)
+      setActivePath(nextActivePath)
+      setSplitPaths((current) => current.map((currentPath) =>
+        currentPath && !isPathWithinEntry(currentPath, entry.path) ? currentPath : null
+      ) as [string | null, string | null])
+      setEntries((current) => current.filter((item) => item.path !== entry.path))
       const nextEntries = await window.workspace.list(directory)
       setEntries(nextEntries)
       setError(null)
@@ -804,6 +853,14 @@ export default function App() {
               )}
             </>
           )}
+          <div className="context-menu-divider" />
+          <button
+            className="file-context-menu-delete"
+            role="menuitem"
+            onClick={() => void deleteEntry(fileContextMenu.entry)}
+          >
+            <span aria-hidden="true">⌫</span> Supprimer
+          </button>
         </div>
       )}
       <footer className="statusbar">

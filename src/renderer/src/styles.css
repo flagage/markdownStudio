@@ -52,6 +52,8 @@ kbd { margin-left: 6px; opacity: .72; font: 10px 'DM Mono', monospace; }
 .file-context-menu { position: fixed; z-index: 30; min-width: 260px; padding: 5px; border: 1px solid #e5e7e0; border-radius: 7px; background: #fff; box-shadow: 0 8px 24px #1f281d24; }
 .file-context-menu button { display: flex; width: 100%; align-items: center; gap: 9px; padding: 8px 10px; border: 0; border-radius: 4px; background: transparent; color: #3e453c; text-align: left; font-size: 12px; }
 .file-context-menu button:hover { background: #eef0ea; color: #40563c; }
+.file-context-menu button.file-context-menu-delete { color: #a33b35; }
+.file-context-menu button.file-context-menu-delete:hover { background: #fff0ee; color: #8f2f29; }
 .empty-folder { padding: 10px; color: #999; font-size: 12px; }
 .welcome-sidebar { padding: 0 15px; color: #7e837a; font-size: 12px; line-height: 1.6; }
 .editor-area { position: relative; display: flex; flex: 1; min-width: 0; overflow: hidden; background: #fff; }
@@ -355,6 +357,8 @@ kbd { margin-left: 6px; opacity: .72; font: 10px 'DM Mono', monospace; }
 :root[data-theme='dark'] .file-context-menu { border-color: #363d38; background-color: #222724; }
 :root[data-theme='dark'] .file-context-menu button { color: #d6ddd4; }
 :root[data-theme='dark'] .file-context-menu button:hover { background-color: #303832; color: #c5d9bb; }
+:root[data-theme='dark'] .file-context-menu button.file-context-menu-delete { color: #ff9a91; }
+:root[data-theme='dark'] .file-context-menu button.file-context-menu-delete:hover { background-color: #492b28; color: #ffb6ad; }
 :root[data-theme='dark'] .context-menu-heading { color: #9da89e; }
 :root[data-theme='dark'] .context-menu-error { background: #492b28; color: #ffb6ad; }
 :root[data-theme='dark'] .mermaid-picker-backdrop { background: #000a; }

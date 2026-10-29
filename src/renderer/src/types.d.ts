@@ -37,6 +37,7 @@ interface Window {
     move: (sourcePath: string, destinationDirectory: string) => Promise<string>
     rename: (sourcePath: string, newName: string) => Promise<string>
     duplicate: (sourcePath: string) => Promise<string>
+    delete: (targetPath: string) => Promise<void>
     listTemplates: () => Promise<UserTemplate[]>
     createTemplate: (name: string, content: string) => Promise<UserTemplate[]>
     deleteTemplate: (id: string) => Promise<UserTemplate[]>
