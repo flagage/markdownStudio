@@ -1,61 +1,59 @@
 # Markdown Studio
 
-Editeur Markdown de bureau en TypeScript avec explorateur de fichiers, édition,
-aperçu en direct et rendu des blocs Mermaid.
+A TypeScript desktop Markdown editor with a file explorer, live editing,
+preview, and Mermaid diagram rendering.
 
-## Démarrer
+## Getting started
 
-Prérequis : Node.js 22.12 ou plus récent.
+Requirement: Node.js 22.12 or later.
 
 ```sh
 npm install
 npm run dev
 ```
 
-## Fonctions du socle
+## Features
 
-- Ouvrir un dossier local et naviguer dans ses sous-dossiers.
-- Parcourir les fichiers et dossiers triés par ordre alphabétique.
-- Déplacer les fichiers et dossiers par glisser-déposer ou en cliquant sur « Déplacer », puis sur la destination.
-- Renommer un fichier ou un dossier depuis son menu contextuel (clic droit).
-- Garder plusieurs notes ouvertes dans des onglets et afficher deux documents côte à côte.
-- Créer des dossiers et des fichiers `.md`.
-- Créer des modèles Markdown, les gérer depuis l’explorateur ou en transformer un fichier existant en modèle avec le clic droit ; les modèles sont disponibles dans tous les espaces de travail et peuvent être appliqués à la création d’un fichier.
-- Modifier et enregistrer un fichier avec `Ctrl+S` ou `Cmd+S`.
-- Écrire directement dans une vue mise en forme, avec une barre d’outils pour les titres,
-  le gras, l’italique, les listes, les citations et les blocs de code.
-- Basculer à tout moment entre l’édition visuelle et le Markdown brut.
-- Insérer l’un des modèles Mermaid disponibles à l’endroit du curseur depuis le menu contextuel (clic droit).
-- Éditer les diagrammes Mermaid dans le document et basculer leur bloc entre aperçu et code.
-- Afficher les graphiques Mermaid `xychart-beta` même si les séries ont des longueurs différentes :
-  le rendu se limite aux catégories ayant une valeur dans chaque série et signale les points ignorés.
-- Gérer les images, tables Markdown et listes de tâches affichées avec leur case à cocher sur la même ligne.
+- Open a local folder and navigate its subfolders.
+- Browse files and folders sorted alphabetically.
+- Move files and folders by dragging and dropping, or by clicking “Move” and then the destination.
+- Rename a file or folder from its context menu (right-click).
+- Keep multiple notes open in tabs and view two documents side by side.
+- Create folders and `.md` files.
+- Create Markdown templates, manage them from the explorer, or turn an existing file into a template using its context menu (right-click). Templates are available in all workspaces and can be used when creating a file.
+- Edit and save files with `Ctrl+S` or `Cmd+S`.
+- Write directly in a formatted view, with a toolbar for headings, bold, italics, lists, quotes, and code blocks.
+- Switch between visual editing and raw Markdown at any time.
+- Insert one of the available Mermaid templates at the cursor from the context menu (right-click).
+- Edit Mermaid diagrams in the document and switch their blocks between preview and code.
+- Render Mermaid `xychart-beta` charts even when series have different lengths: rendering is limited to categories with a value in every series, and skipped points are reported.
+- Work with images, Markdown tables, and task lists whose checkboxes appear on the same line.
 
-## Licence
+## License
 
-Markdown Studio est distribué sous licence MIT. Voir [LICENSE](./LICENSE).
-Cette licence permissive est compatible avec Mermaid, également distribué sous
-licence MIT. Les dépendances tierces conservent leurs propres licences, qui
-doivent être respectées lors de la distribution.
+Markdown Studio is distributed under the MIT license. See [LICENSE](./LICENSE).
+This permissive license is compatible with Mermaid, which is also distributed
+under the MIT license. Third-party dependencies retain their own licenses,
+which must be respected when distributing the application.
 
 Copyright (c) 2026 Fred <fred@lagage.fr>
 
-## Installeurs
+## Installers
 
-Node.js 22.12 ou ultérieur est requis pour créer les paquets.
+Node.js 22.12 or later is required to build the packages.
 
-- Linux x64 : `npm run dist:linux` produit un AppImage et un paquet `.deb` dans `release/`.
-- Windows x64 : `npm run dist:win` produit un installeur NSIS `.exe` dans `release/`. Pour construire depuis Linux, utilisez le workflow GitHub Actions ci-dessous ou un environnement Windows.
+- Linux x64: `npm run dist:linux` creates an AppImage and a `.deb` package in `release/`.
+- Windows x64: `npm run dist:win` creates an NSIS `.exe` installer in `release/`. To build on Linux, use the GitHub Actions workflow below or a Windows environment.
 
-Le workflow manuel **Build installers** (Actions → Build installers → Run workflow)
-construit les paquets Linux et Windows sur leurs plateformes respectives et les
-publie comme artefacts téléchargeables.
+The manual **Build installers** workflow (Actions → Build installers → Run workflow)
+builds the Linux and Windows packages on their respective platforms and
+publishes them as downloadable artifacts.
 
-Pour installer le paquet Debian : `sudo apt install ./release/markdown-studio-<version>-linux-amd64.deb`.
-L’AppImage nécessite FUSE 2. Sur Debian/Ubuntu, installez `libfuse2` (ou
-`libfuse2t64` sur les versions qui fournissent ce paquet), puis lancez-le sans
-`sudo` : `./release/markdown-studio-<version>-linux-x86_64.AppImage`.
-Si FUSE ne peut pas être installé, le contenu peut être extrait avec
+To install the Debian package: `sudo apt install ./release/markdown-studio-<version>-linux-amd64.deb`.
+The AppImage requires FUSE 2. On Debian/Ubuntu, install `libfuse2` (or
+`libfuse2t64` on versions that provide it), then run the AppImage without
+`sudo`: `./release/markdown-studio-<version>-linux-x86_64.AppImage`.
+If FUSE cannot be installed, the contents can be extracted with
 `./release/markdown-studio-<version>-linux-x86_64.AppImage --appimage-extract`,
-puis l’application lancée depuis le répertoire `squashfs-root`.
-Sous Windows, lancez le fichier `.exe` généré et suivez l’assistant NSIS.
+then launch the application from the `squashfs-root` directory.
+On Windows, run the generated `.exe` file and follow the NSIS installer.

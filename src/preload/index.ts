@@ -9,8 +9,8 @@ contextBridge.exposeInMainWorld('workspace', {
   read: (filePath: string) => ipcRenderer.invoke('workspace:read', filePath),
   write: (filePath: string, content: string) =>
     ipcRenderer.invoke('workspace:write', filePath, content),
-  create: (directory: string, name: string, kind: 'file' | 'directory') =>
-    ipcRenderer.invoke('workspace:create', directory, name, kind),
+  create: (directory: string, name: string, kind: 'file' | 'directory', content = '') =>
+    ipcRenderer.invoke('workspace:create', directory, name, kind, content),
   move: (sourcePath: string, destinationDirectory: string) =>
     ipcRenderer.invoke('workspace:move', sourcePath, destinationDirectory),
   rename: (sourcePath: string, newName: string) =>
