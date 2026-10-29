@@ -17,8 +17,10 @@ npm run dev
 - Ouvrir un dossier local et naviguer dans ses sous-dossiers.
 - Parcourir les fichiers et dossiers triés par ordre alphabétique.
 - Déplacer les fichiers et dossiers par glisser-déposer ou en cliquant sur « Déplacer », puis sur la destination.
+- Renommer un fichier ou un dossier depuis son menu contextuel (clic droit).
 - Garder plusieurs notes ouvertes dans des onglets et afficher deux documents côte à côte.
 - Créer des dossiers et des fichiers `.md`.
+- Créer des modèles Markdown, les gérer depuis l’explorateur ou en transformer un fichier existant en modèle avec le clic droit ; les modèles sont disponibles dans tous les espaces de travail et peuvent être appliqués à la création d’un fichier.
 - Modifier et enregistrer un fichier avec `Ctrl+S` ou `Cmd+S`.
 - Écrire directement dans une vue mise en forme, avec une barre d’outils pour les titres,
   le gras, l’italique, les listes, les citations et les blocs de code.

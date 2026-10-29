@@ -11,6 +11,22 @@ interface OpenDocument {
 
 type NewEntryKind = 'file' | 'directory'
 
+interface FileContextMenu {
+  entry: WorkspaceEntry
+  x: number
+  y: number
+}
+
+interface RenameDraft {
+  entry: WorkspaceEntry
+  name: string
+}
+
+interface TemplateDraft {
+  name: string
+  content: string
+}
+
 function updateMovedPath(filePath: string, sourcePath: string, destinationPath: string): string {
   const pathParts = filePath.split(/[\\/]/)
   const sourceParts = sourcePath.split(/[\\/]/)
@@ -38,10 +54,20 @@ export default function App() {
   const [newEntryName, setNewEntryName] = useState('')
   const [creatingEntry, setCreatingEntry] = useState(false)
   const [createEntryError, setCreateEntryError] = useState<string | null>(null)
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [templates, setTemplates] = useState<UserTemplate[]>([])
+  const [templateManagerOpen, setTemplateManagerOpen] = useState(false)
+  const [templateDraft, setTemplateDraft] = useState<TemplateDraft | null>(null)
+  const [templateError, setTemplateError] = useState<string | null>(null)
+  const [savingTemplate, setSavingTemplate] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [moveMode, setMoveMode] = useState(false)
   const [draggedEntry, setDraggedEntry] = useState<WorkspaceEntry | null>(null)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const [fileContextMenu, setFileContextMenu] = useState<FileContextMenu | null>(null)
+  const [renameDraft, setRenameDraft] = useState<RenameDraft | null>(null)
+  const [renamingEntry, setRenamingEntry] = useState(false)
+  const [renameEntryError, setRenameEntryError] = useState<string | null>(null)
   const documentsRef = useRef(documents)
   const saveQueues = useRef(new Map<string, Promise<void>>())
   documentsRef.current = documents
@@ -81,6 +107,18 @@ export default function App() {
       setDirectory(restored.directory)
       setEntries(restoredEntries)
       setError(null)
+    }).catch((reason: unknown) => {
+      if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    void window.workspace.listTemplates().then((loadedTemplates) => {
+      if (!cancelled) setTemplates(loadedTemplates)
     }).catch((reason: unknown) => {
       if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason))
     })
@@ -235,6 +273,7 @@ export default function App() {
   function openCreateEntry(kind: NewEntryKind) {
     setNewEntryKind(kind)
     setNewEntryName('')
+    setSelectedTemplateId('')
     setCreateEntryError(null)
     setError(null)
   }
@@ -243,6 +282,7 @@ export default function App() {
     if (creatingEntry) return
     setNewEntryKind(null)
     setNewEntryName('')
+    setSelectedTemplateId('')
     setCreateEntryError(null)
   }
 
@@ -270,6 +310,150 @@ export default function App() {
       setMoveMode(false)
     }
   }
+
+  function showFileContextMenu(event: React.MouseEvent<HTMLButtonElement>, entry: WorkspaceEntry) {
+    if (moveMode) return
+    event.preventDefault()
+    setFileContextMenu({
+      entry,
+      x: Math.min(event.clientX, window.innerWidth - 268),
+      y: Math.min(event.clientY, window.innerHeight - 156)
+    })
+  }
+
+  async function duplicateEntry(entry: WorkspaceEntry) {
+    setFileContextMenu(null)
+    if (!(await saveAllDocuments())) return
+    try {
+      await window.workspace.duplicate(entry.path)
+      const nextEntries = await window.workspace.list(directory)
+      setEntries(nextEntries)
+      setError(null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    }
+  }
+
+  function openRenameEntry(entry: WorkspaceEntry) {
+    setFileContextMenu(null)
+    setRenameDraft({ entry, name: entry.name })
+    setRenameEntryError(null)
+  }
+
+  async function renameEntry(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!renameDraft || renamingEntry) return
+    const newName = renameDraft.name.trim()
+    if (!newName) {
+      setRenameEntryError('Saisis un nom avant de continuer.')
+      return
+    }
+
+    setRenamingEntry(true)
+    setRenameEntryError(null)
+    try {
+      if (!(await saveAllDocuments())) return
+      const newPath = await window.workspace.rename(renameDraft.entry.path, newName)
+      setDocuments((current) => current.map((document) => ({
+        ...document,
+        path: updateMovedPath(document.path, renameDraft.entry.path, newPath)
+      })))
+      setActivePath((current) =>
+        current ? updateMovedPath(current, renameDraft.entry.path, newPath) : null
+      )
+      setSplitPaths((current) => current.map((currentPath) =>
+        currentPath ? updateMovedPath(currentPath, renameDraft.entry.path, newPath) : null
+      ) as [string | null, string | null])
+      setRenameDraft(null)
+      const nextEntries = await window.workspace.list(directory)
+      setEntries(nextEntries)
+      setError(null)
+    } catch (reason) {
+      setRenameEntryError(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      setRenamingEntry(false)
+    }
+  }
+
+  async function createTemplateFromFile(entry: WorkspaceEntry) {
+    setFileContextMenu(null)
+    if (!(await saveAllDocuments())) return
+    try {
+      const content = await window.workspace.read(entry.path)
+      const name = entry.name.replace(/\.md$/i, '')
+      setTemplateDraft({ name, content })
+      setTemplateError(null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    }
+  }
+
+  function openTemplateManager() {
+    setTemplateManagerOpen(true)
+    setTemplateError(null)
+  }
+
+  function openNewTemplate() {
+    setTemplateDraft({ name: '', content: '' })
+    setTemplateError(null)
+  }
+
+  async function saveTemplate(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!templateDraft || savingTemplate) return
+    setSavingTemplate(true)
+    setTemplateError(null)
+    try {
+      const savedTemplates = await window.workspace.createTemplate(
+        templateDraft.name.trim(),
+        templateDraft.content
+      )
+      setTemplates(savedTemplates)
+      setTemplateDraft(null)
+      setTemplateManagerOpen(true)
+    } catch (reason) {
+      setTemplateError(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      setSavingTemplate(false)
+    }
+  }
+
+  async function deleteTemplate(template: UserTemplate) {
+    setTemplateError(null)
+    try {
+      const remainingTemplates = await window.workspace.deleteTemplate(template.id)
+      setTemplates(remainingTemplates)
+      if (selectedTemplateId === template.id) setSelectedTemplateId('')
+    } catch (reason) {
+      setTemplateError(reason instanceof Error ? reason.message : String(reason))
+    }
+  }
+
+  useEffect(() => {
+    if (!fileContextMenu) return
+    const onPointerDown = () => setFileContextMenu(null)
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setFileContextMenu(null)
+    }
+    window.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [fileContextMenu])
+
+  useEffect(() => {
+    if (!renameDraft) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !renamingEntry) {
+        setRenameDraft(null)
+        setRenameEntryError(null)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [renameDraft, renamingEntry])
 
   function clickEntry(entry: WorkspaceEntry) {
     if (!moveMode) {
@@ -301,7 +485,10 @@ export default function App() {
     setCreatingEntry(true)
     setCreateEntryError(null)
     try {
-      await window.workspace.create(directory, name, newEntryKind)
+      const templateContent = newEntryKind === 'file'
+        ? templates.find((template) => template.id === selectedTemplateId)?.content ?? ''
+        : ''
+      await window.workspace.create(directory, name, newEntryKind, templateContent)
       await loadDirectory(directory)
       setNewEntryKind(null)
       setNewEntryName('')
@@ -320,6 +507,18 @@ export default function App() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [newEntryKind, creatingEntry])
+
+  useEffect(() => {
+    if (!templateManagerOpen && !templateDraft) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || savingTemplate) return
+      if (templateDraft) setTemplateDraft(null)
+      else setTemplateManagerOpen(false)
+      setTemplateError(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [templateManagerOpen, templateDraft, savingTemplate])
 
   useEffect(() => {
     const timers = documents
@@ -429,6 +628,7 @@ export default function App() {
         <aside className="sidebar">
           <div className="sidebar-heading">
             <span>EXPLORATEUR</span>
+            <button className="icon-button" onClick={openTemplateManager}>Modèles</button>
           </div>
           {workspace ? (
             <>
@@ -515,6 +715,7 @@ export default function App() {
                       if (entry.kind === 'directory') handleDrop(event, entry.path)
                     }}
                     onClick={() => clickEntry(entry)}
+                    onContextMenu={(event) => showFileContextMenu(event, entry)}
                     title={entry.path}
                   >
                     <span>{entry.kind === 'directory' ? '▸' : '▤'}</span>
@@ -575,6 +776,36 @@ export default function App() {
           {error && <div className="error-banner" role="alert">{error}</div>}
         </section>
       </div>
+      {fileContextMenu && (
+        <div
+          className="file-context-menu"
+          role="menu"
+          style={{ left: fileContextMenu.x, top: fileContextMenu.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button role="menuitem" onClick={() => openRenameEntry(fileContextMenu.entry)}>
+            <span aria-hidden="true">✎</span> Renommer
+          </button>
+          {fileContextMenu.entry.kind === 'file' && (
+            <>
+              <button
+                role="menuitem"
+                onClick={() => void duplicateEntry(fileContextMenu.entry)}
+              >
+                <span aria-hidden="true">▢</span> Dupliquer
+              </button>
+              {fileContextMenu.entry.name.toLowerCase().endsWith('.md') && (
+                <button
+                  role="menuitem"
+                  onClick={() => void createTemplateFromFile(fileContextMenu.entry)}
+                >
+                  <span aria-hidden="true">◇</span> Créer un modèle depuis ce fichier
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
       <footer className="statusbar">
         <span>{workspace?.name ?? 'Aucun espace ouvert'}</span>
         <span>
@@ -617,6 +848,22 @@ export default function App() {
               aria-invalid={Boolean(createEntryError)}
               disabled={creatingEntry}
             />
+            {newEntryKind === 'file' && templates.length > 0 && (
+              <>
+                <label htmlFor="create-entry-template">Partir d’un modèle</label>
+                <select
+                  id="create-entry-template"
+                  value={selectedTemplateId}
+                  onChange={(event) => setSelectedTemplateId(event.target.value)}
+                  disabled={creatingEntry}
+                >
+                  <option value="">Aucun modèle (fichier vide)</option>
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>{template.name}</option>
+                  ))}
+                </select>
+              </>
+            )}
             {newEntryKind === 'file' && (
               <p className="create-entry-hint">L’extension .md sera ajoutée si elle est absente.</p>
             )}
@@ -631,6 +878,143 @@ export default function App() {
               </button>
               <button className="primary" type="submit" disabled={creatingEntry}>
                 {creatingEntry ? 'Création…' : 'Créer'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      {templateManagerOpen && (
+        <div
+          className="create-entry-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setTemplateManagerOpen(false)
+          }}
+        >
+          <section
+            className="create-entry-dialog template-manager-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="template-manager-title"
+          >
+            <h2 id="template-manager-title">Modèles Markdown</h2>
+            <p className="create-entry-hint">
+              Ces modèles sont disponibles dans tous tes espaces de travail.
+            </p>
+            {templates.length > 0 ? (
+              <ul className="template-list">
+                {templates.map((template) => (
+                  <li key={template.id}>
+                    <span>{template.name}</span>
+                    <button
+                      type="button"
+                      aria-label={`Supprimer le modèle ${template.name}`}
+                      onClick={() => void deleteTemplate(template)}
+                    >Supprimer</button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="empty-folder">Aucun modèle créé pour le moment.</p>
+            )}
+            {templateError && <p className="create-entry-error" role="alert">{templateError}</p>}
+            <div className="create-entry-actions">
+              <button type="button" onClick={() => setTemplateManagerOpen(false)}>Fermer</button>
+              <button className="primary" type="button" onClick={openNewTemplate}>Nouveau modèle</button>
+            </div>
+          </section>
+        </div>
+      )}
+      {templateDraft && (
+        <div
+          className="create-entry-backdrop template-editor-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !savingTemplate) setTemplateDraft(null)
+          }}
+        >
+          <form
+            className="create-entry-dialog template-editor-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="template-editor-title"
+            onSubmit={(event) => void saveTemplate(event)}
+          >
+            <h2 id="template-editor-title">Créer un modèle Markdown</h2>
+            <label htmlFor="template-name">Nom du modèle</label>
+            <input
+              id="template-name"
+              autoFocus
+              value={templateDraft.name}
+              onChange={(event) => setTemplateDraft((current) =>
+                current ? { ...current, name: event.target.value } : current
+              )}
+              placeholder="ex. Compte rendu"
+              disabled={savingTemplate}
+              required
+            />
+            <label htmlFor="template-content">Contenu Markdown</label>
+            <textarea
+              id="template-content"
+              className="template-content-input"
+              value={templateDraft.content}
+              onChange={(event) => setTemplateDraft((current) =>
+                current ? { ...current, content: event.target.value } : current
+              )}
+              disabled={savingTemplate}
+            />
+            {templateError && <p className="create-entry-error" role="alert">{templateError}</p>}
+            <div className="create-entry-actions">
+              <button type="button" onClick={() => setTemplateDraft(null)} disabled={savingTemplate}>
+                Annuler
+              </button>
+              <button className="primary" type="submit" disabled={savingTemplate}>
+                {savingTemplate ? 'Enregistrement…' : 'Enregistrer le modèle'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      {renameDraft && (
+        <div
+          className="create-entry-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !renamingEntry) setRenameDraft(null)
+          }}
+        >
+          <form
+            className="create-entry-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rename-entry-title"
+            onSubmit={(event) => void renameEntry(event)}
+          >
+            <h2 id="rename-entry-title">
+              Renommer {renameDraft.entry.kind === 'directory' ? 'le dossier' : 'le fichier'}
+            </h2>
+            <label htmlFor="rename-entry-name">Nouveau nom</label>
+            <input
+              id="rename-entry-name"
+              autoFocus
+              value={renameDraft.name}
+              onChange={(event) => setRenameDraft((current) =>
+                current ? { ...current, name: event.target.value } : current
+              )}
+              aria-describedby={renameEntryError ? 'rename-entry-error' : undefined}
+              aria-invalid={Boolean(renameEntryError)}
+              disabled={renamingEntry}
+            />
+            {renameEntryError && (
+              <p className="create-entry-error" id="rename-entry-error" role="alert">
+                {renameEntryError}
+              </p>
+            )}
+            <div className="create-entry-actions">
+              <button
+                type="button"
+                onClick={() => setRenameDraft(null)}
+                disabled={renamingEntry}
+              >Annuler</button>
+              <button className="primary" type="submit" disabled={renamingEntry}>
+                {renamingEntry ? 'Renommage…' : 'Renommer'}
               </button>
             </div>
           </form>

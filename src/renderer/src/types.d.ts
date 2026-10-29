@@ -9,6 +9,12 @@ interface WorkspaceInfo {
   name: string
 }
 
+interface UserTemplate {
+  id: string
+  name: string
+  content: string
+}
+
 interface RestoredWorkspace {
   workspace: WorkspaceInfo
   directory: string
@@ -22,7 +28,17 @@ interface Window {
     list: (directory: string) => Promise<WorkspaceEntry[]>
     read: (filePath: string) => Promise<string>
     write: (filePath: string, content: string) => Promise<void>
-    create: (directory: string, name: string, kind: 'file' | 'directory') => Promise<void>
+    create: (
+      directory: string,
+      name: string,
+      kind: 'file' | 'directory',
+      content?: string
+    ) => Promise<void>
     move: (sourcePath: string, destinationDirectory: string) => Promise<string>
+    rename: (sourcePath: string, newName: string) => Promise<string>
+    duplicate: (sourcePath: string) => Promise<string>
+    listTemplates: () => Promise<UserTemplate[]>
+    createTemplate: (name: string, content: string) => Promise<UserTemplate[]>
+    deleteTemplate: (id: string) => Promise<UserTemplate[]>
   }
 }

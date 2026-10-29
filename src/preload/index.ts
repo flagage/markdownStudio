@@ -12,5 +12,13 @@ contextBridge.exposeInMainWorld('workspace', {
   create: (directory: string, name: string, kind: 'file' | 'directory') =>
     ipcRenderer.invoke('workspace:create', directory, name, kind),
   move: (sourcePath: string, destinationDirectory: string) =>
-    ipcRenderer.invoke('workspace:move', sourcePath, destinationDirectory)
+    ipcRenderer.invoke('workspace:move', sourcePath, destinationDirectory),
+  rename: (sourcePath: string, newName: string) =>
+    ipcRenderer.invoke('workspace:rename', sourcePath, newName),
+  duplicate: (sourcePath: string) =>
+    ipcRenderer.invoke('workspace:duplicate', sourcePath),
+  listTemplates: () => ipcRenderer.invoke('templates:list'),
+  createTemplate: (name: string, content: string) =>
+    ipcRenderer.invoke('templates:create', name, content),
+  deleteTemplate: (id: string) => ipcRenderer.invoke('templates:delete', id)
 })

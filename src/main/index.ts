@@ -1,5 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
-import { readdir, readFile, writeFile, mkdir, stat, lstat, rename } from 'node:fs/promises'
+import { readdir, readFile, writeFile, mkdir, stat, lstat, rename, copyFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 
 let workspaceRoot: string | null = null
@@ -11,8 +13,53 @@ interface WorkspacePreferences {
   directory: string
 }
 
+interface UserTemplate {
+  id: string
+  name: string
+  content: string
+}
+
+let templatesWrite = Promise.resolve()
+
 function preferencesPath(): string {
   return path.join(app.getPath('userData'), 'workspace.json')
+}
+
+function templatesPath(): string {
+  return path.join(app.getPath('userData'), 'templates.json')
+}
+
+async function readUserTemplates(): Promise<UserTemplate[]> {
+  let contents: string
+  try {
+    contents = await readFile(templatesPath(), 'utf8')
+  } catch (reason) {
+    if (reason instanceof Error && 'code' in reason && reason.code === 'ENOENT') return []
+    throw reason
+  }
+
+  const parsed: unknown = JSON.parse(contents)
+  if (!Array.isArray(parsed) || !parsed.every((item) =>
+    item && typeof item.id === 'string' && typeof item.name === 'string' &&
+    typeof item.content === 'string'
+  )) {
+    throw new Error('Le fichier des modèles est invalide.')
+  }
+  return parsed
+}
+
+function updateUserTemplates(
+  update: (templates: UserTemplate[]) => UserTemplate[]
+): Promise<UserTemplate[]> {
+  const operation = templatesWrite.catch(() => {}).then(async () => {
+    const templates = await readUserTemplates()
+    const updatedTemplates = update(templates)
+    await mkdir(app.getPath('userData'), { recursive: true })
+    await writeFile(templatesPath(), JSON.stringify(updatedTemplates), 'utf8')
+    return updatedTemplates
+  })
+  templatesWrite = operation.then(() => {}, () => {})
+  return operation
 }
 
 function persistWorkspacePreferences(): Promise<void> {
@@ -145,7 +192,13 @@ ipcMain.handle('workspace:write', async (_event, filePath: string, content: stri
 
 ipcMain.handle(
   'workspace:create',
-  async (_event, directory: string, name: string, kind: 'file' | 'directory') => {
+  async (
+    _event,
+    directory: string,
+    name: string,
+    kind: 'file' | 'directory',
+    content = ''
+  ) => {
     if (!name.trim() || name !== path.basename(name) || name.startsWith('.')) {
       throw new Error('Nom de fichier ou de dossier invalide.')
     }
@@ -155,7 +208,7 @@ ipcMain.handle(
       return
     }
     const filename = name.toLowerCase().endsWith('.md') ? name : `${name}.md`
-    await writeFile(path.join(parent, filename), '', { flag: 'wx' })
+    await writeFile(path.join(parent, filename), content, { flag: 'wx' })
   }
 )
 
@@ -192,6 +245,82 @@ ipcMain.handle('workspace:move', async (_event, sourcePath: string, destinationD
 
   await rename(source, destinationPath)
   return path.relative(workspaceRoot!, destinationPath)
+})
+
+ipcMain.handle('workspace:rename', async (_event, sourcePath: string, newName: string) => {
+  const source = resolveInsideWorkspace(sourcePath)
+  const relativeSource = path.relative(workspaceRoot!, source)
+  if (!relativeSource) {
+    throw new Error('Le dossier de travail ne peut pas être renommé.')
+  }
+  if (typeof newName !== 'string' || !newName.trim() || newName !== newName.trim() ||
+    newName !== path.basename(newName) || newName === '.' || newName === '..' ||
+    newName.startsWith('.')) {
+    throw new Error('Nom de fichier ou de dossier invalide.')
+  }
+
+  await lstat(source)
+  const destination = path.join(path.dirname(source), newName)
+  if (destination === source) return relativeSource
+  try {
+    await lstat(destination)
+    throw new Error('Un fichier ou un dossier portant ce nom existe déjà.')
+  } catch (reason) {
+    if (!(reason instanceof Error && 'code' in reason && reason.code === 'ENOENT')) throw reason
+  }
+
+  await rename(source, destination)
+  return path.relative(workspaceRoot!, destination)
+})
+
+ipcMain.handle('workspace:duplicate', async (_event, sourcePath: string) => {
+  const source = resolveInsideWorkspace(sourcePath)
+  const sourceStats = await lstat(source)
+  if (!sourceStats.isFile()) {
+    throw new Error('Seuls les fichiers peuvent être dupliqués.')
+  }
+
+  const extension = path.extname(source)
+  const filename = path.basename(source, extension)
+  const directory = path.dirname(source)
+  let copyNumber = 1
+
+  while (true) {
+    const suffix = copyNumber === 1 ? ' (copie)' : ` (copie ${copyNumber})`
+    const destination = path.join(directory, `${filename}${suffix}${extension}`)
+    try {
+      await copyFile(source, destination, constants.COPYFILE_EXCL)
+      return path.relative(workspaceRoot!, destination)
+    } catch (reason) {
+      if (!(reason instanceof Error && 'code' in reason && reason.code === 'EEXIST')) throw reason
+      copyNumber += 1
+    }
+  }
+})
+
+ipcMain.handle('templates:list', () => readUserTemplates())
+
+ipcMain.handle('templates:create', async (_event, name: string, content: string) => {
+  const normalizedName = typeof name === 'string' ? name.trim() : ''
+  if (!normalizedName || typeof content !== 'string') {
+    throw new Error('Le nom et le contenu du modèle sont obligatoires.')
+  }
+
+  return updateUserTemplates((templates) => {
+    if (templates.some((template) => template.name.toLocaleLowerCase() === normalizedName.toLocaleLowerCase())) {
+      throw new Error('Un modèle portant ce nom existe déjà.')
+    }
+    return [...templates, { id: randomUUID(), name: normalizedName, content }]
+  })
+})
+
+ipcMain.handle('templates:delete', async (_event, id: string) => {
+  return updateUserTemplates((templates) => {
+    if (!templates.some((template) => template.id === id)) {
+      throw new Error('Le modèle demandé n’existe plus.')
+    }
+    return templates.filter((template) => template.id !== id)
+  })
 })
 
 app.whenReady().then(() => {
