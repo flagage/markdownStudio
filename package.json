@@ -1,0 +1,85 @@
+{
+  "name": "markdown-studio",
+  "version": "0.1.0",
+  "productName": "Markdown Studio",
+  "description": "Editeur Markdown de bureau avec prise en charge de Mermaid",
+  "author": "Fred <fred@lagage.fr>",
+  "homepage": "mailto:fred@lagage.fr",
+  "desktopName": "Markdown Studio",
+  "license": "MIT",
+  "main": "./out/main/index.js",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "tsc --noEmit && electron-vite build",
+    "preview": "electron-vite preview",
+    "dist:linux": "npm run build && electron-builder --linux AppImage deb --x64",
+    "dist:win": "npm run build && electron-builder --win nsis --x64"
+  },
+  "dependencies": {
+    "@tiptap/extension-code-block": "^3.32.0",
+    "@tiptap/extension-image": "^3.32.0",
+    "@tiptap/extension-table": "^3.32.0",
+    "@tiptap/extension-task-item": "^3.32.0",
+    "@tiptap/extension-task-list": "^3.32.0",
+    "@tiptap/markdown": "^3.32.0",
+    "@tiptap/react": "^3.32.0",
+    "@tiptap/starter-kit": "^3.32.0",
+    "mermaid": "^12.2.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^45.1.0",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^3.0.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
+  },
+  "build": {
+    "appId": "fr.lagage.markdownstudio",
+    "productName": "Markdown Studio",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json",
+      "LICENSE"
+    ],
+    "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
+    "linux": {
+      "category": "Office",
+      "syncDesktopName": true,
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "build/icons"
+    },
+    "deb": {
+      "packageCategory": "utils"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icons/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Markdown Studio"
+    }
+  }
+}
