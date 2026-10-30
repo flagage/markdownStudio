@@ -60,14 +60,16 @@
         "ext": "md",
         "name": "Markdown",
         "description": "Markdown document",
-        "role": "Editor",
-        "isDefault": true
+        "role": "Editor"
       }
     ],
     "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
     "linux": {
       "category": "Office",
       "syncDesktopName": true,
+      "mimeTypes": [
+        "text/markdown"
+      ],
       "target": [
         "AppImage",
         "deb"
