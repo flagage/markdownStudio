@@ -79,6 +79,7 @@ kbd { margin-left: 6px; opacity: .72; font: 10px 'DM Mono', monospace; }
 .focused-pane > .pane-header select { color: #40563c; font-weight: 600; }
 .wysiwyg-editor { display: flex; flex: 1; min-width: 0; flex-direction: column; }
 .format-toolbar { display: flex; flex-shrink: 0; align-items: center; gap: 5px; height: 42px; padding: 0 16px; border-bottom: 1px solid #f0f0eb; }
+.image-error { padding: 6px 16px; color: #a33b35; background: #fff0ee; font-size: 12px; }
 .format-toolbar button,.mermaid-heading button { min-width: 30px; height: 27px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; color: #60675e; font-size: 11px; }
 .format-toolbar button:hover,.format-toolbar button.active,.mermaid-heading button:hover { background: #eef0ea; color: #40563c; }
 .format-toolbar .mode-toggle { margin-left: auto; padding: 0 10px; border: 1px solid #e3e5de; }

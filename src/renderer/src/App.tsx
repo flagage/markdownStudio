@@ -79,6 +79,10 @@ export default function App() {
   const [renameEntryError, setRenameEntryError] = useState<string | null>(null)
   const documentsRef = useRef(documents)
   const saveQueues = useRef(new Map<string, Promise<void>>())
+  const openMarkdownFileRef = useRef<() => void>(() => {})
+  const openDroppedMarkdownFileRef = useRef<(filePath: string) => Promise<void>>(
+    async () => {}
+  )
   documentsRef.current = documents
   const activeDocument = documents.find((document) => document.path === activePath) ?? null
   useLayoutEffect(() => {
@@ -124,10 +128,35 @@ export default function App() {
     }
   }, [])
 
-  useEffect(() => window.workspace.onOpenFile(() => void openMarkdownFile()), [])
-  useEffect(() => window.workspace.onFilesDropped((filePaths) => {
-    for (const filePath of filePaths) void openDroppedMarkdownFile(filePath)
-  }), [])
+  useEffect(() => window.workspace.onOpenFile(() => openMarkdownFileRef.current()), [])
+  useEffect(() => {
+    let cancelled = false
+    const openPendingFiles = () => {
+      void window.workspace.takePendingFiles().then(async (filePaths) => {
+        if (!cancelled) {
+          for (const filePath of filePaths) {
+            await openDroppedMarkdownFileRef.current(filePath)
+          }
+        }
+      }).catch((reason: unknown) => {
+        if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason))
+      })
+    }
+    const unsubscribeFilesOpened = window.workspace.onFilesOpened(openPendingFiles)
+    const unsubscribeFilesDropped = window.workspace.onFilesDropped((filePaths) => {
+      void (async () => {
+        for (const filePath of filePaths) {
+          await openDroppedMarkdownFileRef.current(filePath)
+        }
+      })()
+    })
+    openPendingFiles()
+    return () => {
+      cancelled = true
+      unsubscribeFilesOpened()
+      unsubscribeFilesDropped()
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -184,6 +213,9 @@ export default function App() {
       setError(reason instanceof Error ? reason.message : String(reason))
     }
   }
+
+  openMarkdownFileRef.current = () => void openMarkdownFile()
+  openDroppedMarkdownFileRef.current = openDroppedMarkdownFile
 
   function openLoadedDocument(path: string, content: string, external: boolean) {
     const existing = documents.find((document) => document.path === path)

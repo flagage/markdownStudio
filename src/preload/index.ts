@@ -12,6 +12,16 @@ contextBridge.exposeInMainWorld('workspace', {
     ipcRenderer.on('menu:open-file', listener)
     return () => ipcRenderer.removeListener('menu:open-file', listener)
   },
+  takePendingFiles: () => ipcRenderer.invoke('workspace:take-pending-files') as Promise<string[]>,
+  onFilesOpened: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('files:pending', listener)
+    return () => ipcRenderer.removeListener('files:pending', listener)
+  },
+  selectImage: () => ipcRenderer.invoke('workspace:select-image') as Promise<{
+    name: string
+    dataUrl: string
+  } | null>,
   onFilesDropped: (callback: (filePaths: string[]) => void) => {
     const listener = (event: DragEvent) => {
       const filePaths = Array.from(event.dataTransfer?.files ?? [])

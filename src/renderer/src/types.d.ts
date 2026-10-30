@@ -27,6 +27,9 @@ interface Window {
     openDroppedFile: (filePath: string) => Promise<{ path: string; content: string }>
     writeExternal: (filePath: string, content: string) => Promise<void>
     onOpenFile: (callback: () => void) => () => void
+    takePendingFiles: () => Promise<string[]>
+    onFilesOpened: (callback: () => void) => () => void
+    selectImage: () => Promise<{ name: string; dataUrl: string } | null>
     onFilesDropped: (callback: (filePaths: string[]) => void) => () => void
     restore: () => Promise<RestoredWorkspace | null>
     rememberDirectory: (directory: string) => Promise<void>

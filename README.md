@@ -16,6 +16,7 @@ npm run dev
 
 - Open a local folder and navigate its subfolders.
 - Open a `.md` file directly from the File menu or by dragging it into the application.
+- Open `.md` files from the desktop by associating them with Markdown Studio.
 - Browse files and folders sorted alphabetically.
 - Move files and folders by dragging and dropping, or by clicking “Move” and then the destination.
 - Rename a file or folder from its context menu (right-click).
@@ -24,6 +25,7 @@ npm run dev
 - Create Markdown templates, manage them from the explorer, or turn an existing file into a template using its context menu (right-click). Templates are available in all workspaces and can be used when creating a file.
 - Edit and save files with `Ctrl+S` or `Cmd+S`.
 - Write directly in a formatted view, with a toolbar for headings, bold, italics, lists, quotes, and code blocks.
+- Insert PNG, JPEG, GIF, WebP, or BMP images from the editor toolbar; images are embedded in the Markdown and displayed inline.
 - Switch between visual editing and raw Markdown at any time.
 - Insert one of the available Mermaid templates at the cursor from the context menu (right-click).
 - Edit Mermaid diagrams in the document and switch their blocks between preview and code.

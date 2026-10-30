@@ -55,6 +55,15 @@
       "package.json",
       "LICENSE"
     ],
+    "fileAssociations": [
+      {
+        "ext": "md",
+        "name": "Markdown",
+        "description": "Markdown document",
+        "role": "Editor",
+        "isDefault": true
+      }
+    ],
     "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
     "linux": {
       "category": "Office",

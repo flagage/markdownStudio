@@ -238,6 +238,7 @@ export default function MarkdownEditor({
     hasSelection: boolean
   } | null>(null)
   const [contextMenuError, setContextMenuError] = useState<string | null>(null)
+  const [imageError, setImageError] = useState<string | null>(null)
   const [mermaidPickerOpen, setMermaidPickerOpen] = useState(false)
   const [selectedMermaidTemplateId, setSelectedMermaidTemplateId] = useState('flowchart-v2')
   const [rawMarkdownMode, setRawMarkdownMode] = useState(false)
@@ -405,6 +406,17 @@ export default function MarkdownEditor({
     setMermaidPickerOpen(false)
   }
 
+  async function insertImageFromFile() {
+    try {
+      const image = await window.workspace.selectImage()
+      if (!image) return
+      editor.chain().focus().setImage({ src: image.dataUrl, alt: image.name }).run()
+      setImageError(null)
+    } catch (reason) {
+      setImageError(reason instanceof Error ? reason.message : String(reason))
+    }
+  }
+
   function toggleMarkdownMode() {
     if (!rawMarkdownMode) {
       setRawMarkdownMode(true)
@@ -437,6 +449,7 @@ export default function MarkdownEditor({
             <button type="button" title="Citation" onClick={() => editor.chain().focus().toggleBlockquote().run()}>Citation</button>
             <button type="button" title="Bloc de code" onClick={() => editor.chain().focus().toggleCodeBlock().run()}>&lt;/&gt;</button>
             <button type="button" title="Séparateur" onClick={() => editor.chain().focus().setHorizontalRule().run()}>—</button>
+            <button type="button" title="Insérer une image" onClick={() => void insertImageFromFile()}>Image</button>
           </>
         )}
         <button
@@ -449,6 +462,7 @@ export default function MarkdownEditor({
           {rawMarkdownMode ? 'Mode visuel' : 'Markdown brut'}
         </button>
       </div>
+      {imageError && <div className="image-error" role="alert">{imageError}</div>}
       <div className={`writing-surface ${rawMarkdownMode ? 'raw-markdown-surface' : ''}`}>
         {rawMarkdownMode ? (
           <textarea
@@ -536,6 +550,17 @@ export default function MarkdownEditor({
                   >
                     <span className="context-menu-icon">◇</span>
                     Insérer un modèle Mermaid…
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      setContextMenu(null)
+                      void insertImageFromFile()
+                    }}
+                  >
+                    Insérer une image…
                   </button>
                 </div>
                 {contextMenuError && <div className="context-menu-error" role="alert">{contextMenuError}</div>}

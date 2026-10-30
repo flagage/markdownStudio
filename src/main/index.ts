@@ -7,6 +7,36 @@ import path from 'node:path'
 let workspaceRoot: string | null = null
 let lastWorkspaceDirectory = '.'
 let preferencesWrite = Promise.resolve()
+let mainWindow: BrowserWindow | null = null
+const pendingMarkdownFiles: string[] = []
+const imageMimeTypes: Record<string, string> = {
+  '.bmp': 'image/bmp',
+  '.gif': 'image/gif',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp'
+}
+
+function queueMarkdownFile(filePath: string): void {
+  if (path.extname(filePath).toLowerCase() !== '.md') return
+  pendingMarkdownFiles.push(path.resolve(filePath))
+  mainWindow?.webContents.send('files:pending')
+}
+
+function queueMarkdownFileFromArguments(args: string[]): void {
+  const filePath = args.find((argument) => path.extname(argument).toLowerCase() === '.md')
+  if (filePath) queueMarkdownFile(filePath)
+}
+
+function showMainWindow(): void {
+  if (!mainWindow) {
+    if (app.isReady()) createWindow()
+    return
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.focus()
+}
 
 interface WorkspacePreferences {
   path: string
@@ -98,6 +128,10 @@ function createWindow(): void {
       sandbox: true
     }
   })
+  mainWindow = window
+  window.on('closed', () => {
+    if (mainWindow === window) mainWindow = null
+  })
 
   const menu = Menu.buildFromTemplate([
     {
@@ -153,8 +187,35 @@ ipcMain.handle('workspace:open-file', async () => {
   return readExternalMarkdownFile(result.filePaths[0])
 })
 
+ipcMain.handle('workspace:take-pending-files', () => pendingMarkdownFiles.splice(0))
+
 ipcMain.handle('workspace:open-dropped-file', async (_event, filePath: string) => {
   return readExternalMarkdownFile(filePath)
+})
+
+ipcMain.handle('workspace:select-image', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{
+      name: 'Images',
+      extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp']
+    }]
+  })
+  if (result.canceled || result.filePaths.length === 0) return null
+
+  const imagePath = result.filePaths[0]
+  const mimeType = imageMimeTypes[path.extname(imagePath).toLowerCase()]
+  if (!mimeType) throw new Error('Ce format d’image n’est pas pris en charge.')
+  const imageStats = await stat(imagePath)
+  if (!imageStats.isFile()) throw new Error('Le chemin demandé ne correspond pas à une image.')
+  if (imageStats.size > 20 * 1024 * 1024) {
+    throw new Error('L’image dépasse la taille maximale de 20 Mo.')
+  }
+  const image = await readFile(imagePath)
+  return {
+    name: path.basename(imagePath),
+    dataUrl: `data:${mimeType};base64,${image.toString('base64')}`
+  }
 })
 
 ipcMain.handle('workspace:write-external', async (_event, filePath: string, content: string) => {
@@ -394,12 +455,30 @@ ipcMain.handle('templates:delete', async (_event, id: string) => {
   })
 })
 
-app.whenReady().then(() => {
-  createWindow()
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+
+if (!hasSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('open-file', (event, filePath) => {
+    event.preventDefault()
+    queueMarkdownFile(filePath)
+    showMainWindow()
   })
-})
+
+  app.on('second-instance', (_event, commandLine) => {
+    queueMarkdownFileFromArguments(commandLine.slice(1))
+    showMainWindow()
+  })
+
+  app.whenReady().then(() => {
+    queueMarkdownFileFromArguments(process.argv.slice(1))
+    createWindow()
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
+  })
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
