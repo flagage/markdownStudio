@@ -112,7 +112,6 @@ export default function App() {
 
   async function loadDirectory(path: string) {
     try {
-      if (path !== directory && !(await saveAllDocuments())) return
       const nextEntries = await window.workspace.list(path)
       await window.workspace.rememberDirectory(path)
       setEntries(nextEntries)
@@ -718,6 +717,7 @@ export default function App() {
         )}
         {document ? (
           <MarkdownEditor
+            key={document.path}
             value={document.content}
             onChange={(content) => updateDocument(document.path, content)}
             documentPath={document.external || !workspace
