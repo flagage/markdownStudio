@@ -12,6 +12,13 @@ contextBridge.exposeInMainWorld('workspace', {
     ipcRenderer.on('menu:open-file', listener)
     return () => ipcRenderer.removeListener('menu:open-file', listener)
   },
+  exportDocument: (format: 'pdf' | 'docx', markdown: string, markdownPath: string) =>
+    ipcRenderer.invoke('document:export', format, markdown, markdownPath) as Promise<string | null>,
+  onExportDocument: (callback: (format: 'pdf' | 'docx') => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, format: 'pdf' | 'docx') => callback(format)
+    ipcRenderer.on('menu:export-document', listener)
+    return () => ipcRenderer.removeListener('menu:export-document', listener)
+  },
   takePendingFiles: () => ipcRenderer.invoke('workspace:take-pending-files') as Promise<string[]>,
   onFilesOpened: (callback: () => void) => {
     const listener = () => callback()

@@ -27,6 +27,12 @@ interface Window {
     openDroppedFile: (filePath: string) => Promise<{ path: string; content: string }>
     writeExternal: (filePath: string, content: string) => Promise<void>
     onOpenFile: (callback: () => void) => () => void
+    exportDocument: (
+      format: 'pdf' | 'docx',
+      markdown: string,
+      markdownPath: string
+    ) => Promise<string | null>
+    onExportDocument: (callback: (format: 'pdf' | 'docx') => void) => () => void
     takePendingFiles: () => Promise<string[]>
     onFilesOpened: (callback: () => void) => () => void
     selectImage: (

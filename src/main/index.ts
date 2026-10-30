@@ -3,6 +3,9 @@ import { readdir, readFile, writeFile, mkdir, stat, lstat, rename, copyFile, rm 
 import { constants } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import HTMLtoDOCX from 'html-to-docx'
+import { marked } from 'marked'
 
 let workspaceRoot: string | null = null
 let lastWorkspaceDirectory = '.'
@@ -142,8 +145,45 @@ function createWindow(): void {
           accelerator: 'CmdOrCtrl+O',
           click: () => window.webContents.send('menu:open-file')
         },
+        {
+          label: 'Exporter',
+          submenu: [
+            {
+              label: 'PDF…',
+              click: () => window.webContents.send('menu:export-document', 'pdf')
+            },
+            {
+              label: 'Word (.docx)…',
+              click: () => window.webContents.send('menu:export-document', 'docx')
+            }
+          ]
+        },
         { type: 'separator' },
         { role: 'quit', label: 'Quitter' }
+      ]
+    },
+    {
+      label: 'Affichage',
+      submenu: [
+        {
+          label: 'Zoom avant',
+          accelerator: 'CmdOrCtrl+Plus',
+          click: () => window.webContents.setZoomLevel(
+            Math.min(window.webContents.getZoomLevel() + 1, 5)
+          )
+        },
+        {
+          label: 'Zoom arrière',
+          accelerator: 'CmdOrCtrl+-',
+          click: () => window.webContents.setZoomLevel(
+            Math.max(window.webContents.getZoomLevel() - 1, -5)
+          )
+        },
+        {
+          label: 'Taille réelle',
+          accelerator: 'CmdOrCtrl+0',
+          click: () => window.webContents.setZoomLevel(0)
+        }
       ]
     }
   ])
@@ -188,6 +228,146 @@ ipcMain.handle('workspace:open-file', async () => {
 })
 
 ipcMain.handle('workspace:take-pending-files', () => pendingMarkdownFiles.splice(0))
+
+async function embedLocalImages(html: string, markdownPath: string): Promise<string> {
+  const documentDirectory = path.dirname(markdownPath)
+  const imageTagPattern = /<img\b[^>]*\bsrc=(["'])(.*?)\1[^>]*>/gi
+  let result = ''
+  let previousIndex = 0
+
+  for (const match of html.matchAll(imageTagPattern)) {
+    const imageTag = match[0]
+    const src = match[2]
+    let imagePath: string | null = null
+
+    if (src.startsWith('file://')) {
+      imagePath = fileURLToPath(src)
+    } else if (!/^[a-z][a-z\d+.-]*:/i.test(src) && !src.startsWith('/')) {
+      imagePath = path.resolve(documentDirectory, decodeURIComponent(src))
+    }
+
+    let outputTag = imageTag
+    if (imagePath) {
+      const mimeType = imageMimeTypes[path.extname(imagePath).toLowerCase()]
+      if (mimeType) {
+        const imageStats = await stat(imagePath)
+        if (!imageStats.isFile()) throw new Error(`L’image « ${path.basename(imagePath)} » est introuvable.`)
+        if (imageStats.size > 20 * 1024 * 1024) {
+          throw new Error(`L’image « ${path.basename(imagePath)} » dépasse 20 Mo.`)
+        }
+        const image = await readFile(imagePath)
+        const dataUrl = `data:${mimeType};base64,${image.toString('base64')}`
+        outputTag = imageTag.replace(
+          `src=${match[1]}${src}${match[1]}`,
+          `src=${match[1]}${dataUrl}${match[1]}`
+        )
+      }
+    }
+
+    result += html.slice(previousIndex, match.index) + outputTag
+    previousIndex = match.index + imageTag.length
+  }
+
+  return result + html.slice(previousIndex)
+}
+
+function createExportHtml(title: string, content: string): string {
+  const escapedTitle = title.replace(/[&<>"']/g, (character) => {
+    const entities: Record<string, string> = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    }
+    return entities[character]
+  })
+  return `<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>${escapedTitle}</title>
+  <style>
+    @page { size: A4; margin: 20mm; }
+    body { color: #242726; font: 11pt/1.6 Arial, sans-serif; }
+    h1, h2, h3, h4 { line-height: 1.25; margin: 1.2em 0 .5em; }
+    img { max-width: 100%; height: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #b8bdb4; padding: 5px 8px; text-align: left; }
+    pre { white-space: pre-wrap; background: #f2f3ef; padding: 10px; }
+    blockquote { border-left: 3px solid #aeb8a9; margin-left: 0; padding-left: 12px; color: #60675e; }
+  </style>
+</head>
+<body>${content}</body>
+</html>`
+}
+
+ipcMain.handle(
+  'document:export',
+  async (
+    event,
+    format: 'pdf' | 'docx',
+    markdown: string,
+    markdownPath: string
+  ) => {
+    if ((format !== 'pdf' && format !== 'docx') || typeof markdown !== 'string' ||
+      typeof markdownPath !== 'string' || !path.isAbsolute(markdownPath) ||
+      path.extname(markdownPath).toLowerCase() !== '.md') {
+      throw new Error('Les informations du document à exporter sont invalides.')
+    }
+
+    const title = path.basename(markdownPath, path.extname(markdownPath))
+    const saveDialogOptions = {
+      title: format === 'pdf' ? 'Exporter en PDF' : 'Exporter vers Word',
+      defaultPath: path.join(path.dirname(markdownPath), `${title}.${format}`),
+      filters: [{
+        name: format === 'pdf' ? 'Document PDF' : 'Document Word',
+        extensions: [format]
+      }]
+    }
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    const result = owner
+      ? await dialog.showSaveDialog(owner, saveDialogOptions)
+      : await dialog.showSaveDialog(saveDialogOptions)
+    if (result.canceled || !result.filePath) return null
+
+    const renderedMarkdown = await marked.parse(markdown, { gfm: true })
+    const html = createExportHtml(title, await embedLocalImages(renderedMarkdown, markdownPath))
+    if (format === 'docx') {
+      const converted = await HTMLtoDOCX(html, null, {
+        title,
+        creator: 'Markdown Studio',
+        lang: 'fr-FR'
+      })
+      const data = Buffer.isBuffer(converted)
+        ? converted
+        : Buffer.from(await converted.arrayBuffer())
+      await writeFile(result.filePath, data)
+      return result.filePath
+    }
+
+    const exportWindow = new BrowserWindow({
+      show: false,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        javascript: false
+      }
+    })
+    try {
+      await exportWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+      const pdf = await exportWindow.webContents.printToPDF({
+        pageSize: 'A4',
+        printBackground: true
+      })
+      await writeFile(result.filePath, pdf)
+    } finally {
+      exportWindow.close()
+    }
+    return result.filePath
+  }
+)
 
 ipcMain.handle('workspace:open-dropped-file', async (_event, filePath: string) => {
   return readExternalMarkdownFile(filePath)

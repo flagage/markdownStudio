@@ -93,6 +93,9 @@ export default function App() {
   const documentsRef = useRef(documents)
   const saveQueues = useRef(new Map<string, Promise<void>>())
   const openMarkdownFileRef = useRef<() => void>(() => {})
+  const exportDocumentRef = useRef<(format: 'pdf' | 'docx') => Promise<void>>(
+    async () => {}
+  )
   const openDroppedMarkdownFileRef = useRef<(filePath: string) => Promise<void>>(
     async () => {}
   )
@@ -141,6 +144,9 @@ export default function App() {
   }, [])
 
   useEffect(() => window.workspace.onOpenFile(() => openMarkdownFileRef.current()), [])
+  useEffect(() => window.workspace.onExportDocument((format) => {
+    void exportDocumentRef.current(format)
+  }), [])
   useEffect(() => {
     let cancelled = false
     const openPendingFiles = () => {
@@ -324,6 +330,30 @@ export default function App() {
     }
     return true
   }
+
+  async function exportDocument(format: 'pdf' | 'docx') {
+    if (!activePath || !(await saveFile(activePath))) return
+    const document = documentsRef.current.find((item) => item.path === activePath)
+    if (!document) {
+      setError('Aucun document Markdown actif à exporter.')
+      return
+    }
+
+    try {
+      const markdownPath = document.external
+        ? document.path
+        : workspace ? getWorkspaceFilePath(workspace.path, document.path) : null
+      if (!markdownPath) {
+        setError('Le dossier de travail du document est introuvable.')
+        return
+      }
+      await window.workspace.exportDocument(format, document.content, markdownPath)
+      setError(null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    }
+  }
+  exportDocumentRef.current = exportDocument
 
   async function activateDocument(path: string) {
     if (path === activePath) return true
