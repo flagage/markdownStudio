@@ -3,12 +3,13 @@ import CodeBlock from '@tiptap/extension-code-block'
 import { Markdown } from '@tiptap/markdown'
 import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { InputRule } from '@tiptap/core'
+import { InputRule, mergeAttributes } from '@tiptap/core'
 import type { NodeViewProps } from '@tiptap/core'
 import { Fragment } from '@tiptap/pm/model'
 import { TextSelection } from '@tiptap/pm/state'
 import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
 import Image, { inputRegex as imageInputRegex } from '@tiptap/extension-image'
+import type { ImageOptions } from '@tiptap/extension-image'
 import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
 import MermaidDiagram from './MermaidDiagram'
@@ -177,7 +178,29 @@ const MarkdownTaskItem = TaskItem.extend({
   }
 })
 
-const MarkdownImage = Image.extend({
+const MarkdownImage = Image.extend<ImageOptions & { baseUrl: string }>({
+  addOptions() {
+    return {
+      inline: false,
+      allowBase64: false,
+      HTMLAttributes: {},
+      resize: false,
+      ...this.parent?.(),
+      baseUrl: ''
+    }
+  },
+  renderHTML({ HTMLAttributes }) {
+    const src = HTMLAttributes.src
+    const absoluteSrc = typeof src === 'string' &&
+      !/^(?:[a-z][a-z\d+.-]*:|\/)/i.test(src) &&
+      this.options.baseUrl
+      ? new URL(src, this.options.baseUrl).href
+      : src
+    return [
+      'img',
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, { src: absoluteSrc })
+    ]
+  },
   addInputRules() {
     return [
       new InputRule({
@@ -226,10 +249,16 @@ function normalizeAtxHeadingSpacing(markdown: string): string {
 
 export default function MarkdownEditor({
   value,
-  onChange
+  onChange,
+  documentPath,
+  external,
+  imageBaseUrl
 }: {
   value: string
   onChange: (markdown: string) => void
+  documentPath: string
+  external: boolean
+  imageBaseUrl: string
 }) {
   const [contextMenu, setContextMenu] = useState<{
     x: number
@@ -252,10 +281,10 @@ export default function MarkdownEditor({
       TableCell,
       TaskList,
       MarkdownTaskItem.configure({ nested: true, HTMLAttributes: { class: 'task-item' } }),
-      MarkdownImage,
+      MarkdownImage.configure({ baseUrl: imageBaseUrl }),
       Markdown
     ],
-    []
+    [imageBaseUrl]
   )
 
   const editor = useEditor({
@@ -270,7 +299,7 @@ export default function MarkdownEditor({
         'aria-label': 'Éditeur Markdown'
       }
     }
-  })
+  }, [extensions])
 
   useEffect(() => {
     if (editor && !rawMarkdownMode && editor.getMarkdown() !== value) {
@@ -408,9 +437,9 @@ export default function MarkdownEditor({
 
   async function insertImageFromFile() {
     try {
-      const image = await window.workspace.selectImage()
+      const image = await window.workspace.selectImage(documentPath, external)
       if (!image) return
-      editor.chain().focus().setImage({ src: image.dataUrl, alt: image.name }).run()
+      editor.chain().focus().setImage({ src: image.relativePath, alt: image.name }).run()
       setImageError(null)
     } catch (reason) {
       setImageError(reason instanceof Error ? reason.message : String(reason))

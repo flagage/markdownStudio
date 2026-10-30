@@ -29,7 +29,10 @@ interface Window {
     onOpenFile: (callback: () => void) => () => void
     takePendingFiles: () => Promise<string[]>
     onFilesOpened: (callback: () => void) => () => void
-    selectImage: () => Promise<{ name: string; dataUrl: string } | null>
+    selectImage: (
+      markdownPath: string,
+      external: boolean
+    ) => Promise<{ name: string; relativePath: string } | null>
     onFilesDropped: (callback: (filePaths: string[]) => void) => () => void
     restore: () => Promise<RestoredWorkspace | null>
     rememberDirectory: (directory: string) => Promise<void>

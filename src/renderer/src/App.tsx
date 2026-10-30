@@ -45,6 +45,19 @@ function isPathWithinEntry(filePath: string, entryPath: string): boolean {
     entryParts.every((part, index) => pathParts[index] === part)
 }
 
+function getFileUrl(filePath: string): string {
+  const normalizedPath = filePath.replace(/\\/g, '/')
+  const encodedPath = normalizedPath.split('/').map((part) =>
+    /^[a-zA-Z]:$/.test(part) ? part : encodeURIComponent(part)
+  ).join('/')
+  return `${normalizedPath.startsWith('/') ? 'file://' : 'file:///'}${encodedPath}`
+}
+
+function getWorkspaceFilePath(workspacePath: string, filePath: string): string {
+  const separator = workspacePath.includes('\\') ? '\\' : '/'
+  return `${workspacePath.replace(/[\\/]+$/, '')}${separator}${filePath}`
+}
+
 export default function App() {
   const [theme, setTheme] = useState<Theme>(() => {
     const savedTheme = window.localStorage.getItem('markdown-studio-theme')
@@ -707,6 +720,16 @@ export default function App() {
           <MarkdownEditor
             value={document.content}
             onChange={(content) => updateDocument(document.path, content)}
+            documentPath={document.external || !workspace
+              ? document.path
+              : getWorkspaceFilePath(workspace.path, document.path)}
+            external={document.external}
+            imageBaseUrl={new URL(
+              '.',
+              getFileUrl(document.external || !workspace
+                ? document.path
+                : getWorkspaceFilePath(workspace.path, document.path))
+            ).href}
           />
         ) : (
           <div className="pane-empty">Choisis un fichier ouvert pour ce panneau.</div>

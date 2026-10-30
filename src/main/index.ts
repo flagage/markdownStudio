@@ -193,30 +193,75 @@ ipcMain.handle('workspace:open-dropped-file', async (_event, filePath: string) =
   return readExternalMarkdownFile(filePath)
 })
 
-ipcMain.handle('workspace:select-image', async () => {
-  const result = await dialog.showOpenDialog({
-    properties: ['openFile'],
-    filters: [{
-      name: 'Images',
-      extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp']
-    }]
-  })
-  if (result.canceled || result.filePaths.length === 0) return null
+ipcMain.handle(
+  'workspace:select-image',
+  async (_event, markdownPath: string, external: boolean) => {
+    if (typeof external !== 'boolean') {
+      throw new Error('Le type du document Markdown est invalide.')
+    }
+    const resolvedMarkdownPath = external
+      ? markdownPath
+      : resolveInsideWorkspace(markdownPath)
+    if (!path.isAbsolute(resolvedMarkdownPath) ||
+      path.extname(resolvedMarkdownPath).toLowerCase() !== '.md') {
+      throw new Error('Le document actif n’est pas un fichier Markdown valide.')
+    }
+    if (!(await stat(resolvedMarkdownPath)).isFile()) {
+      throw new Error('Le document Markdown actif n’existe plus.')
+    }
 
-  const imagePath = result.filePaths[0]
-  const mimeType = imageMimeTypes[path.extname(imagePath).toLowerCase()]
-  if (!mimeType) throw new Error('Ce format d’image n’est pas pris en charge.')
-  const imageStats = await stat(imagePath)
-  if (!imageStats.isFile()) throw new Error('Le chemin demandé ne correspond pas à une image.')
-  if (imageStats.size > 20 * 1024 * 1024) {
-    throw new Error('L’image dépasse la taille maximale de 20 Mo.')
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{
+        name: 'Images',
+        extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp']
+      }]
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+
+    const imagePath = result.filePaths[0]
+    const mimeType = imageMimeTypes[path.extname(imagePath).toLowerCase()]
+    if (!mimeType) throw new Error('Ce format d’image n’est pas pris en charge.')
+    const imageStats = await stat(imagePath)
+    if (!imageStats.isFile()) throw new Error('Le chemin demandé ne correspond pas à une image.')
+    if (imageStats.size > 20 * 1024 * 1024) {
+      throw new Error('L’image dépasse la taille maximale de 20 Mo.')
+    }
+
+    const documentDirectory = path.dirname(resolvedMarkdownPath)
+    const imageName = path.basename(imagePath)
+    let relativePath = imageName
+    if (path.dirname(imagePath) !== documentDirectory) {
+      let copyNumber = 0
+      while (true) {
+        const extension = path.extname(imageName)
+        const basename = path.basename(imageName, extension)
+        const candidateName = copyNumber === 0
+          ? imageName
+          : `${basename} (${copyNumber})${extension}`
+        try {
+          await copyFile(
+            imagePath,
+            path.join(documentDirectory, candidateName),
+            constants.COPYFILE_EXCL
+          )
+          relativePath = candidateName
+          break
+        } catch (reason) {
+          if (!(reason instanceof Error && 'code' in reason && reason.code === 'EEXIST')) {
+            throw reason
+          }
+          copyNumber += 1
+        }
+      }
+    }
+
+    return {
+      name: relativePath,
+      relativePath: encodeURIComponent(relativePath)
+    }
   }
-  const image = await readFile(imagePath)
-  return {
-    name: path.basename(imagePath),
-    dataUrl: `data:${mimeType};base64,${image.toString('base64')}`
-  }
-})
+)
 
 ipcMain.handle('workspace:write-external', async (_event, filePath: string, content: string) => {
   if (!path.isAbsolute(filePath) || path.extname(filePath).toLowerCase() !== '.md') {

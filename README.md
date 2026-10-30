@@ -25,7 +25,7 @@ npm run dev
 - Create Markdown templates, manage them from the explorer, or turn an existing file into a template using its context menu (right-click). Templates are available in all workspaces and can be used when creating a file.
 - Edit and save files with `Ctrl+S` or `Cmd+S`.
 - Write directly in a formatted view, with a toolbar for headings, bold, italics, lists, quotes, and code blocks.
-- Insert PNG, JPEG, GIF, WebP, or BMP images from the editor toolbar; images are embedded in the Markdown and displayed inline.
+- Insert PNG, JPEG, GIF, WebP, or BMP images from the editor toolbar; images are copied beside the Markdown document and referenced with a relative link, then displayed inline.
 - Switch between visual editing and raw Markdown at any time.
 - Insert one of the available Mermaid templates at the cursor from the context menu (right-click).
 - Edit Mermaid diagrams in the document and switch their blocks between preview and code.

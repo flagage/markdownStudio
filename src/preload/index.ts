@@ -18,9 +18,10 @@ contextBridge.exposeInMainWorld('workspace', {
     ipcRenderer.on('files:pending', listener)
     return () => ipcRenderer.removeListener('files:pending', listener)
   },
-  selectImage: () => ipcRenderer.invoke('workspace:select-image') as Promise<{
+  selectImage: (markdownPath: string, external: boolean) =>
+    ipcRenderer.invoke('workspace:select-image', markdownPath, external) as Promise<{
     name: string
-    dataUrl: string
+    relativePath: string
   } | null>,
   onFilesDropped: (callback: (filePaths: string[]) => void) => {
     const listener = (event: DragEvent) => {
