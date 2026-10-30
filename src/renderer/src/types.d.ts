@@ -20,6 +20,12 @@ interface RestoredWorkspace {
   directory: string
 }
 
+interface WordPressSettingsSummary {
+  siteUrl: string
+  username: string
+  configured: boolean
+}
+
 interface Window {
   workspace: {
     select: () => Promise<WorkspaceInfo | null>
@@ -33,6 +39,18 @@ interface Window {
       markdownPath: string
     ) => Promise<string | null>
     onExportDocument: (callback: (format: 'pdf' | 'docx') => void) => () => void
+    onWordPressSettings: (callback: () => void) => () => void
+    onWordPressPublish: (callback: () => void) => () => void
+    getWordPressSettings: () => Promise<WordPressSettingsSummary>
+    saveWordPressSettings: (
+      siteUrl: string,
+      username: string,
+      password: string
+    ) => Promise<WordPressSettingsSummary>
+    publishWordPressDraft: (
+      markdown: string,
+      markdownPath: string
+    ) => Promise<{ title: string; url: string }>
     takePendingFiles: () => Promise<string[]>
     onFilesOpened: (callback: () => void) => () => void
     selectImage: (

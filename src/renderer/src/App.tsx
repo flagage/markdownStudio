@@ -82,6 +82,15 @@ export default function App() {
   const [templateError, setTemplateError] = useState<string | null>(null)
   const [savingTemplate, setSavingTemplate] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [wordpressSettingsOpen, setWordpressSettingsOpen] = useState(false)
+  const [wordpressSiteUrl, setWordpressSiteUrl] = useState('')
+  const [wordpressUsername, setWordpressUsername] = useState('')
+  const [wordpressPassword, setWordpressPassword] = useState('')
+  const [wordpressConfigured, setWordpressConfigured] = useState(false)
+  const [savingWordpressSettings, setSavingWordpressSettings] = useState(false)
+  const [publishingWordpress, setPublishingWordpress] = useState(false)
+  const [wordpressSettingsError, setWordpressSettingsError] = useState<string | null>(null)
+  const [wordpressSuccess, setWordpressSuccess] = useState<{ title: string; url: string } | null>(null)
   const [fileDragOver, setFileDragOver] = useState(false)
   const [moveMode, setMoveMode] = useState(false)
   const [draggedEntry, setDraggedEntry] = useState<WorkspaceEntry | null>(null)
@@ -96,6 +105,8 @@ export default function App() {
   const exportDocumentRef = useRef<(format: 'pdf' | 'docx') => Promise<void>>(
     async () => {}
   )
+  const openWordpressSettingsRef = useRef<() => Promise<void>>(async () => {})
+  const publishWordpressDraftRef = useRef<() => Promise<void>>(async () => {})
   const openDroppedMarkdownFileRef = useRef<(filePath: string) => Promise<void>>(
     async () => {}
   )
@@ -146,6 +157,12 @@ export default function App() {
   useEffect(() => window.workspace.onOpenFile(() => openMarkdownFileRef.current()), [])
   useEffect(() => window.workspace.onExportDocument((format) => {
     void exportDocumentRef.current(format)
+  }), [])
+  useEffect(() => window.workspace.onWordPressSettings(() => {
+    void openWordpressSettingsRef.current()
+  }), [])
+  useEffect(() => window.workspace.onWordPressPublish(() => {
+    void publishWordpressDraftRef.current()
   }), [])
   useEffect(() => {
     let cancelled = false
@@ -354,6 +371,77 @@ export default function App() {
     }
   }
   exportDocumentRef.current = exportDocument
+
+  async function openWordpressSettings() {
+    try {
+      const settings = await window.workspace.getWordPressSettings()
+      setWordpressSiteUrl(settings.siteUrl)
+      setWordpressUsername(settings.username)
+      setWordpressPassword('')
+      setWordpressConfigured(settings.configured)
+      setWordpressSettingsError(null)
+      setWordpressSettingsOpen(true)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    }
+  }
+  openWordpressSettingsRef.current = openWordpressSettings
+
+  async function saveWordpressSettings(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (savingWordpressSettings) return
+    setSavingWordpressSettings(true)
+    setWordpressSettingsError(null)
+    try {
+      const settings = await window.workspace.saveWordPressSettings(
+        wordpressSiteUrl,
+        wordpressUsername,
+        wordpressPassword
+      )
+      setWordpressSiteUrl(settings.siteUrl)
+      setWordpressUsername(settings.username)
+      setWordpressConfigured(settings.configured)
+      setWordpressPassword('')
+      setWordpressSettingsOpen(false)
+      setError(null)
+    } catch (reason) {
+      setWordpressSettingsError(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      setSavingWordpressSettings(false)
+    }
+  }
+
+  async function publishWordpressDraft() {
+    if (!activePath || !(await saveFile(activePath))) {
+      if (!activePath) setError('Ouvre un document Markdown avant de créer un brouillon WordPress.')
+      return
+    }
+    const document = documentsRef.current.find((item) => item.path === activePath)
+    if (!document) {
+      setError('Aucun document Markdown actif à publier.')
+      return
+    }
+    const markdownPath = document.external
+      ? document.path
+      : workspace ? getWorkspaceFilePath(workspace.path, document.path) : null
+    if (!markdownPath) {
+      setError('Le dossier de travail du document est introuvable.')
+      return
+    }
+
+    setPublishingWordpress(true)
+    setWordpressSuccess(null)
+    try {
+      const result = await window.workspace.publishWordPressDraft(document.content, markdownPath)
+      setError(null)
+      setWordpressSuccess(result)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      setPublishingWordpress(false)
+    }
+  }
+  publishWordpressDraftRef.current = publishWordpressDraft
 
   async function activateDocument(path: string) {
     if (path === activePath) return true
@@ -993,6 +1081,11 @@ export default function App() {
             </div>
           )}
           {error && <div className="error-banner" role="alert">{error}</div>}
+          {wordpressSuccess && (
+            <div className="success-banner" role="status">
+              Brouillon « {wordpressSuccess.title} » créé sur WordPress : {wordpressSuccess.url}
+            </div>
+          )}
         </section>
       </div>
       {fileDragOver && (
@@ -1110,6 +1203,76 @@ export default function App() {
               </button>
               <button className="primary" type="submit" disabled={creatingEntry}>
                 {creatingEntry ? 'Création…' : 'Créer'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      {wordpressSettingsOpen && (
+        <div
+          className="create-entry-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !savingWordpressSettings) {
+              setWordpressSettingsOpen(false)
+            }
+          }}
+        >
+          <form
+            className="create-entry-dialog wordpress-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wordpress-settings-title"
+            onSubmit={(event) => void saveWordpressSettings(event)}
+          >
+            <h2 id="wordpress-settings-title">Connexion à WordPress</h2>
+            <label htmlFor="wordpress-site-url">Adresse du site</label>
+            <input
+              id="wordpress-site-url"
+              type="url"
+              autoFocus
+              required
+              value={wordpressSiteUrl}
+              onChange={(event) => setWordpressSiteUrl(event.target.value)}
+              placeholder="https://mon-site.fr"
+              disabled={savingWordpressSettings}
+            />
+            <label htmlFor="wordpress-username">Nom d’utilisateur</label>
+            <input
+              id="wordpress-username"
+              autoComplete="username"
+              required
+              value={wordpressUsername}
+              onChange={(event) => setWordpressUsername(event.target.value)}
+              disabled={savingWordpressSettings}
+            />
+            <label htmlFor="wordpress-app-password">Mot de passe d’application</label>
+            <input
+              id="wordpress-app-password"
+              type="password"
+              autoComplete="new-password"
+              value={wordpressPassword}
+              onChange={(event) => setWordpressPassword(event.target.value)}
+              placeholder={wordpressConfigured ? 'Laisser vide pour conserver le mot de passe actuel' : ''}
+              required={!wordpressConfigured}
+              disabled={savingWordpressSettings}
+            />
+            <p className="create-entry-hint">
+              Crée ce mot de passe dans ton profil WordPress, sous « Mots de passe d’application ».
+              Il est stocké de manière chiffrée sur cet appareil.
+            </p>
+            {wordpressSettingsError && (
+              <p className="create-entry-error" role="alert">{wordpressSettingsError}</p>
+            )}
+            <div className="create-entry-actions">
+              <button
+                type="button"
+                onClick={() => setWordpressSettingsOpen(false)}
+                disabled={savingWordpressSettings}
+              >
+                Annuler
+              </button>
+              <button className="primary" type="submit" disabled={savingWordpressSettings}>
+                {savingWordpressSettings ? 'Vérification…' : 'Vérifier et enregistrer'}
               </button>
             </div>
           </form>

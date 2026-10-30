@@ -19,6 +19,24 @@ contextBridge.exposeInMainWorld('workspace', {
     ipcRenderer.on('menu:export-document', listener)
     return () => ipcRenderer.removeListener('menu:export-document', listener)
   },
+  onWordPressSettings: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('menu:wordpress-settings', listener)
+    return () => ipcRenderer.removeListener('menu:wordpress-settings', listener)
+  },
+  onWordPressPublish: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('menu:wordpress-publish', listener)
+    return () => ipcRenderer.removeListener('menu:wordpress-publish', listener)
+  },
+  getWordPressSettings: () =>
+    ipcRenderer.invoke('wordpress:get-settings') as Promise<WordPressSettingsSummary>,
+  saveWordPressSettings: (siteUrl: string, username: string, password: string) =>
+    ipcRenderer.invoke('wordpress:save-settings', siteUrl, username, password) as
+      Promise<WordPressSettingsSummary>,
+  publishWordPressDraft: (markdown: string, markdownPath: string) =>
+    ipcRenderer.invoke('wordpress:publish-draft', markdown, markdownPath) as
+      Promise<{ title: string; url: string }>,
   takePendingFiles: () => ipcRenderer.invoke('workspace:take-pending-files') as Promise<string[]>,
   onFilesOpened: (callback: () => void) => {
     const listener = () => callback()

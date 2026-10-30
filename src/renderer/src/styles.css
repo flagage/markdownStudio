@@ -186,8 +186,11 @@ kbd { margin-left: 6px; opacity: .72; font: 10px 'DM Mono', monospace; }
 .empty-state .primary { padding: 9px 13px; border: 0; border-radius: 6px; }
 .empty-state .feature-hint { margin-top: 30px; color: #9b9f97; font-size: 11px; }
 .error-banner { position: absolute; right: 16px; bottom: 16px; max-width: min(600px, 80%); padding: 10px 14px; border: 1px solid #e5b7b2; border-radius: 6px; background: #fff5f3; color: #8d3932; font-size: 12px; box-shadow: 0 3px 12px #0000000d; }
+.success-banner { position: absolute; right: 16px; bottom: 16px; max-width: min(700px, 80%); padding: 10px 14px; border: 1px solid #b9d1b3; border-radius: 6px; background: #f3faf1; color: #3e6539; font-size: 12px; box-shadow: 0 3px 12px #0000000d; }
 .create-entry-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 20px; background: #0006; }
 .create-entry-dialog { width: min(100%, 400px); padding: 22px; border: 1px solid #e7e9e2; border-radius: 10px; background: #fff; box-shadow: 0 18px 60px #0003; color: #343a34; }
+.wordpress-dialog { width: min(100%, 460px); }
+.wordpress-dialog label:not(:first-of-type) { margin-top: 12px; }
 .create-entry-dialog h2 { margin: 0 0 18px; font-size: 17px; font-weight: 600; }
 .create-entry-dialog label { display: block; margin-bottom: 7px; color: #60675e; font-size: 12px; font-weight: 600; }
 .create-entry-dialog input { width: 100%; height: 38px; padding: 0 10px; border: 1px solid #dfe3da; border-radius: 5px; outline: none; background: #fff; color: #343a34; font: 13px 'DM Sans', sans-serif; }
@@ -368,6 +371,7 @@ kbd { margin-left: 6px; opacity: .72; font: 10px 'DM Mono', monospace; }
 :root[data-theme='dark'] .mermaid-picker-actions button.primary { border-color: #718b6c; background: #546b50; color: #fff; }
 :root[data-theme='dark'] .error-banner { border-color: #764540; background: #3a2623; color: #ffb6ad; }
 :root[data-theme='dark'] .create-entry-dialog { border-color: #3b443d; }
+:root[data-theme='dark'] .success-banner { border-color: #405c3e; background: #202b20; color: #b7d7b0; }
 :root[data-theme='dark'] .create-entry-dialog label { color: #b6c0b5; }
 :root[data-theme='dark'] .create-entry-dialog input { border-color: #4a554c; }
 :root[data-theme='dark'] .create-entry-dialog select,

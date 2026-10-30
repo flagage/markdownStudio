@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage } from 'electron'
 import { readdir, readFile, writeFile, mkdir, stat, lstat, rename, copyFile, rm } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { randomUUID } from 'node:crypto'
@@ -15,6 +15,14 @@ let mainWindow: BrowserWindow | null = null
 const pendingMarkdownFiles: string[] = []
 let recentMarkdownFiles: string[] = []
 const maxRecentMarkdownFiles = 10
+const wordpressImageMimeTypes: Record<string, string> = {
+  '.bmp': 'image/bmp',
+  '.gif': 'image/gif',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp'
+}
 const imageMimeTypes: Record<string, string> = {
   '.bmp': 'image/bmp',
   '.gif': 'image/gif',
@@ -46,6 +54,288 @@ function showMainWindow(): void {
 
 function recentMarkdownFilesPath(): string {
   return path.join(app.getPath('userData'), 'recent-files.json')
+}
+
+function wordpressSettingsPath(): string {
+  return path.join(app.getPath('userData'), 'wordpress.json')
+}
+
+interface StoredWordPressSettings {
+  siteUrl: string
+  username: string
+  encryptedPassword: string
+}
+
+interface WordPressSettingsSummary {
+  siteUrl: string
+  username: string
+  configured: boolean
+}
+
+async function readWordPressSettings(): Promise<StoredWordPressSettings | null> {
+  let contents: string
+  try {
+    contents = await readFile(wordpressSettingsPath(), 'utf8')
+  } catch (reason) {
+    if (reason instanceof Error && 'code' in reason && reason.code === 'ENOENT') return null
+    throw reason
+  }
+  const parsed: unknown = JSON.parse(contents)
+  if (!parsed || typeof parsed !== 'object' ||
+    !('siteUrl' in parsed) || typeof parsed.siteUrl !== 'string' ||
+    !('username' in parsed) || typeof parsed.username !== 'string' ||
+    !('encryptedPassword' in parsed) || typeof parsed.encryptedPassword !== 'string') {
+    throw new Error('La configuration WordPress est invalide.')
+  }
+  return parsed as StoredWordPressSettings
+}
+
+function getWordPressApiBase(siteUrl: string): string {
+  let parsedUrl: URL
+  try {
+    parsedUrl = new URL(siteUrl)
+  } catch {
+    throw new Error('Saisis une adresse de site WordPress valide.')
+  }
+  if ((parsedUrl.protocol !== 'https:' &&
+    !(parsedUrl.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(parsedUrl.hostname))) ||
+    parsedUrl.username || parsedUrl.password || parsedUrl.search || parsedUrl.hash) {
+    throw new Error('Le site WordPress doit utiliser HTTPS (HTTP est accepté uniquement en local).')
+  }
+  return `${parsedUrl.origin}${parsedUrl.pathname.replace(/\/+$/, '')}/wp-json/wp/v2`
+}
+
+function wordPressAuthorization(username: string, password: string): string {
+  return `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`
+}
+
+async function getWordPressPassword(settings: StoredWordPressSettings): Promise<string> {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Le stockage sécurisé des identifiants est indisponible sur cet appareil.')
+  }
+  return safeStorage.decryptString(Buffer.from(settings.encryptedPassword, 'base64'))
+}
+
+async function wordPressRequest(
+  endpoint: string,
+  username: string,
+  password: string,
+  init: RequestInit = {}
+): Promise<Response> {
+  const response = await fetch(endpoint, {
+    ...init,
+    headers: {
+      ...init.headers,
+      Authorization: wordPressAuthorization(username, password)
+    },
+    signal: AbortSignal.timeout(60_000)
+  })
+  if (!response.ok) {
+    const body = await response.text()
+    let message = `WordPress a répondu avec le statut ${response.status}.`
+    let errorCode = ''
+    try {
+      const error: unknown = JSON.parse(body)
+      if (error && typeof error === 'object') {
+        if ('code' in error && typeof error.code === 'string') errorCode = error.code
+        if ('message' in error && typeof error.message === 'string') message = error.message
+      }
+    } catch {
+      if (body) message = body.slice(0, 500)
+    }
+    if (errorCode === 'rest_not_logged_in') {
+      let redirectedToDifferentSite = false
+      try {
+        redirectedToDifferentSite = response.url !== '' &&
+          new URL(response.url).origin !== new URL(endpoint).origin
+      } catch {
+        redirectedToDifferentSite = false
+      }
+      if (redirectedToDifferentSite) {
+        message = `L’adresse WordPress redirige vers ${response.url}. Utilise directement l’adresse finale du site dans les réglages : WordPress ne transmet pas les identifiants lors d’une redirection vers un autre domaine.`
+      } else {
+        message = `WordPress ne reconnaît pas l’authentification. Vérifie que tu utilises le nom de connexion WordPress (pas le nom affiché), un mot de passe d’application valide, et que l’API REST du site accepte l’en-tête Authorization. La connexion doit être en HTTPS. Réponse WordPress : ${message}`
+      }
+    }
+    throw new Error(message)
+  }
+  return response
+}
+
+async function saveWordPressSettings(
+  siteUrl: string,
+  username: string,
+  password: string
+): Promise<WordPressSettingsSummary> {
+  if (typeof siteUrl !== 'string' || typeof username !== 'string' ||
+    typeof password !== 'string' || !username.trim()) {
+    throw new Error('L’adresse du site et le nom d’utilisateur sont obligatoires.')
+  }
+  const apiBase = getWordPressApiBase(siteUrl.trim())
+  const normalizedSiteUrl = new URL(siteUrl.trim()).href.replace(/\/+$/, '')
+  const normalizedUsername = username.trim()
+  let appPassword = password.replace(/\s+/g, '')
+  const previous = await readWordPressSettings()
+  if (!appPassword && previous &&
+    previous.siteUrl === normalizedSiteUrl && previous.username === normalizedUsername) {
+    appPassword = await getWordPressPassword(previous)
+  }
+  if (!appPassword) throw new Error('Saisis un mot de passe d’application WordPress.')
+
+  await wordPressRequest(`${apiBase}/users/me?context=edit`, normalizedUsername, appPassword)
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Le stockage sécurisé des identifiants est indisponible sur cet appareil.')
+  }
+  const encryptedPassword = safeStorage.encryptString(appPassword).toString('base64')
+  await mkdir(app.getPath('userData'), { recursive: true })
+  await writeFile(wordpressSettingsPath(), JSON.stringify({
+    siteUrl: normalizedSiteUrl,
+    username: normalizedUsername,
+    encryptedPassword
+  } satisfies StoredWordPressSettings), 'utf8')
+  return { siteUrl: normalizedSiteUrl, username: normalizedUsername, configured: true }
+}
+
+async function getWordPressSettingsSummary(): Promise<WordPressSettingsSummary> {
+  const settings = await readWordPressSettings()
+  return {
+    siteUrl: settings?.siteUrl ?? '',
+    username: settings?.username ?? '',
+    configured: Boolean(settings)
+  }
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (entity, code: string) => {
+    if (code[0] === '#') {
+      const isHex = code[1]?.toLowerCase() === 'x'
+      const numericValue = Number.parseInt(code.slice(isHex ? 2 : 1), isHex ? 16 : 10)
+      return Number.isFinite(numericValue) ? String.fromCodePoint(numericValue) : entity
+    }
+    const entities: Record<string, string> = {
+      amp: '&',
+      apos: "'",
+      gt: '>',
+      lt: '<',
+      nbsp: ' ',
+      quot: '"'
+    }
+    return entities[code.toLowerCase()] ?? entity
+  })
+}
+
+async function uploadWordPressImage(
+  apiBase: string,
+  username: string,
+  password: string,
+  imagePath: string
+): Promise<string> {
+  const resolvedImagePath = path.resolve(imagePath)
+  const mimeType = wordpressImageMimeTypes[path.extname(resolvedImagePath).toLowerCase()]
+  if (!mimeType) throw new Error(`Le format de l’image « ${path.basename(imagePath)} » n’est pas pris en charge.`)
+  const imageStats = await stat(resolvedImagePath)
+  if (!imageStats.isFile()) throw new Error(`L’image « ${path.basename(imagePath)} » est introuvable.`)
+  if (imageStats.size > 20 * 1024 * 1024) {
+    throw new Error(`L’image « ${path.basename(imagePath)} » dépasse 20 Mo.`)
+  }
+
+  const image = await readFile(resolvedImagePath)
+  const filename = path.basename(resolvedImagePath)
+  const response = await wordPressRequest(`${apiBase}/media`, username, password, {
+    method: 'POST',
+    headers: {
+      'Content-Type': mimeType,
+      'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`
+    },
+    body: image
+  })
+  const media: unknown = await response.json()
+  if (!media || typeof media !== 'object' || !('source_url' in media) ||
+    typeof media.source_url !== 'string') {
+    throw new Error(`WordPress n’a pas renvoyé l’URL de l’image « ${filename} ».`)
+  }
+  return media.source_url
+}
+
+async function uploadLocalWordPressImages(
+  html: string,
+  markdownPath: string,
+  apiBase: string,
+  username: string,
+  password: string
+): Promise<string> {
+  const imageTagPattern = /<img\b[^>]*\bsrc=(["'])(.*?)\1[^>]*>/gi
+  const uploadedImages = new Map<string, string>()
+  let result = ''
+  let previousIndex = 0
+
+  for (const match of html.matchAll(imageTagPattern)) {
+    const imageTag = match[0]
+    const source = decodeHtmlEntities(match[2])
+    let outputTag = imageTag
+    const isFileUrl = source.startsWith('file://')
+    if (isFileUrl || !/^(?:[a-z][a-z\d+.-]*:|\/)/i.test(source)) {
+      let imagePath: string
+      try {
+        imagePath = isFileUrl
+          ? fileURLToPath(source)
+          : path.resolve(path.dirname(markdownPath), decodeURIComponent(source.split(/[?#]/, 1)[0]))
+      } catch {
+        throw new Error(`Le chemin de l’image « ${source} » est invalide.`)
+      }
+      let uploadedUrl = uploadedImages.get(imagePath)
+      if (!uploadedUrl) {
+        uploadedUrl = await uploadWordPressImage(apiBase, username, password, imagePath)
+        uploadedImages.set(imagePath, uploadedUrl)
+      }
+      const escapedUploadedUrl = uploadedUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+      outputTag = imageTag.replace(
+        `src=${match[1]}${match[2]}${match[1]}`,
+        `src=${match[1]}${escapedUploadedUrl}${match[1]}`
+      )
+    }
+    result += html.slice(previousIndex, match.index) + outputTag
+    previousIndex = match.index + imageTag.length
+  }
+  return result + html.slice(previousIndex)
+}
+
+async function publishWordPressDraft(
+  markdown: string,
+  markdownPath: string
+): Promise<{ title: string; url: string }> {
+  if (typeof markdown !== 'string' || typeof markdownPath !== 'string' ||
+    !path.isAbsolute(markdownPath) || path.extname(markdownPath).toLowerCase() !== '.md') {
+    throw new Error('Les informations du document Markdown sont invalides.')
+  }
+  const settings = await readWordPressSettings()
+  if (!settings) throw new Error('Configure d’abord la connexion à WordPress dans le menu Fichier.')
+  const password = await getWordPressPassword(settings)
+  const apiBase = getWordPressApiBase(settings.siteUrl)
+  const html = await marked.parse(markdown, { gfm: true })
+  const titleMatch = html.match(/<h1(?:\s[^>]*)?>([\s\S]*?)<\/h1>/i)
+  const title = titleMatch
+    ? decodeHtmlEntities(titleMatch[1].replace(/<[^>]*>/g, '').trim())
+    : path.basename(markdownPath, path.extname(markdownPath))
+  if (!title) throw new Error('Le titre de l’article Markdown est vide.')
+
+  const content = await uploadLocalWordPressImages(
+    html,
+    markdownPath,
+    apiBase,
+    settings.username,
+    password
+  )
+  const response = await wordPressRequest(`${apiBase}/posts`, settings.username, password, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, content, status: 'draft' })
+  })
+  const post: unknown = await response.json()
+  if (!post || typeof post !== 'object' || !('link' in post) || typeof post.link !== 'string') {
+    throw new Error('WordPress n’a pas renvoyé le lien du brouillon.')
+  }
+  return { title, url: post.link }
 }
 
 async function loadRecentMarkdownFiles(): Promise<void> {
@@ -100,6 +390,19 @@ function refreshApplicationMenu(window: BrowserWindow): void {
         {
           label: 'Fichiers récents',
           submenu: recentMenuItems
+        },
+        {
+          label: 'WordPress',
+          submenu: [
+            {
+              label: 'Configurer WordPress…',
+              click: () => window.webContents.send('menu:wordpress-settings')
+            },
+            {
+              label: 'Créer un brouillon avec le document actif',
+              click: () => window.webContents.send('menu:wordpress-publish')
+            }
+          ]
         },
         {
           label: 'Exporter',
@@ -310,6 +613,18 @@ ipcMain.handle('workspace:open-file', async () => {
 })
 
 ipcMain.handle('workspace:take-pending-files', () => pendingMarkdownFiles.splice(0))
+
+ipcMain.handle('wordpress:get-settings', () => getWordPressSettingsSummary())
+ipcMain.handle(
+  'wordpress:save-settings',
+  (_event, siteUrl: string, username: string, password: string) =>
+    saveWordPressSettings(siteUrl, username, password)
+)
+ipcMain.handle(
+  'wordpress:publish-draft',
+  (_event, markdown: string, markdownPath: string) =>
+    publishWordPressDraft(markdown, markdownPath)
+)
 
 async function embedLocalImages(html: string, markdownPath: string): Promise<string> {
   const documentDirectory = path.dirname(markdownPath)
