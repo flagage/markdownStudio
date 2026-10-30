@@ -10,8 +10,11 @@ import { marked } from 'marked'
 let workspaceRoot: string | null = null
 let lastWorkspaceDirectory = '.'
 let preferencesWrite = Promise.resolve()
+let recentFilesWrite = Promise.resolve()
 let mainWindow: BrowserWindow | null = null
 const pendingMarkdownFiles: string[] = []
+let recentMarkdownFiles: string[] = []
+const maxRecentMarkdownFiles = 10
 const imageMimeTypes: Record<string, string> = {
   '.bmp': 'image/bmp',
   '.gif': 'image/gif',
@@ -39,6 +42,134 @@ function showMainWindow(): void {
   }
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.focus()
+}
+
+function recentMarkdownFilesPath(): string {
+  return path.join(app.getPath('userData'), 'recent-files.json')
+}
+
+async function loadRecentMarkdownFiles(): Promise<void> {
+  let contents: string
+  try {
+    contents = await readFile(recentMarkdownFilesPath(), 'utf8')
+  } catch (reason) {
+    if (reason instanceof Error && 'code' in reason && reason.code === 'ENOENT') return
+    throw reason
+  }
+
+  const parsed: unknown = JSON.parse(contents)
+  if (!Array.isArray(parsed) || !parsed.every((filePath) =>
+    typeof filePath === 'string' && path.isAbsolute(filePath) &&
+    path.extname(filePath).toLowerCase() === '.md'
+  )) {
+    throw new Error('La liste des fichiers récents est invalide.')
+  }
+  recentMarkdownFiles = parsed.slice(0, maxRecentMarkdownFiles)
+}
+
+function refreshApplicationMenu(window: BrowserWindow): void {
+  const recentMenuItems: Electron.MenuItemConstructorOptions[] = recentMarkdownFiles.length > 0
+    ? recentMarkdownFiles.map((filePath) => ({
+      label: `${path.basename(filePath)} — ${path.dirname(filePath)}`,
+      click: () => {
+        queueMarkdownFile(filePath)
+        showMainWindow()
+      }
+    }))
+    : [{ label: 'Aucun fichier récent', enabled: false }]
+  if (recentMarkdownFiles.length > 0) {
+    recentMenuItems.push({ type: 'separator' }, {
+      label: 'Effacer les fichiers récents',
+      click: () => {
+        void clearRecentMarkdownFiles().catch((reason: unknown) => {
+          console.error('Impossible d’effacer les fichiers récents :', reason)
+        })
+      }
+    })
+  }
+
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'Fichier',
+      submenu: [
+        {
+          label: 'Ouvrir un fichier Markdown…',
+          accelerator: 'CmdOrCtrl+O',
+          click: () => window.webContents.send('menu:open-file')
+        },
+        {
+          label: 'Fichiers récents',
+          submenu: recentMenuItems
+        },
+        {
+          label: 'Exporter',
+          submenu: [
+            {
+              label: 'PDF…',
+              click: () => window.webContents.send('menu:export-document', 'pdf')
+            },
+            {
+              label: 'Word (.docx)…',
+              click: () => window.webContents.send('menu:export-document', 'docx')
+            }
+          ]
+        },
+        { type: 'separator' },
+        { role: 'quit', label: 'Quitter' }
+      ]
+    },
+    {
+      label: 'Affichage',
+      submenu: [
+        {
+          label: 'Zoom avant',
+          accelerator: 'CmdOrCtrl+Plus',
+          click: () => window.webContents.setZoomLevel(
+            Math.min(window.webContents.getZoomLevel() + 1, 5)
+          )
+        },
+        {
+          label: 'Zoom arrière',
+          accelerator: 'CmdOrCtrl+-',
+          click: () => window.webContents.setZoomLevel(
+            Math.max(window.webContents.getZoomLevel() - 1, -5)
+          )
+        },
+        {
+          label: 'Taille réelle',
+          accelerator: 'CmdOrCtrl+0',
+          click: () => window.webContents.setZoomLevel(0)
+        }
+      ]
+    }
+  ])
+  Menu.setApplicationMenu(menu)
+}
+
+function persistRecentMarkdownFiles(): Promise<void> {
+  const operation = recentFilesWrite.catch(() => {}).then(async () => {
+    await mkdir(app.getPath('userData'), { recursive: true })
+    await writeFile(recentMarkdownFilesPath(), JSON.stringify(recentMarkdownFiles), 'utf8')
+  })
+  recentFilesWrite = operation.then(() => {}, () => {})
+  return operation
+}
+
+async function rememberRecentMarkdownFile(filePath: string): Promise<void> {
+  const resolvedPath = path.resolve(filePath)
+  if (path.extname(resolvedPath).toLowerCase() !== '.md') return
+  recentMarkdownFiles = [
+    resolvedPath,
+    ...recentMarkdownFiles.filter((recentPath) => recentPath !== resolvedPath)
+  ].slice(0, maxRecentMarkdownFiles)
+  await persistRecentMarkdownFiles()
+  if (mainWindow) refreshApplicationMenu(mainWindow)
+}
+
+async function clearRecentMarkdownFiles(): Promise<void> {
+  recentMarkdownFiles = []
+  await persistRecentMarkdownFiles()
+  if (mainWindow) refreshApplicationMenu(mainWindow)
 }
 
 interface WorkspacePreferences {
@@ -136,58 +267,7 @@ function createWindow(): void {
     if (mainWindow === window) mainWindow = null
   })
 
-  const menu = Menu.buildFromTemplate([
-    {
-      label: 'Fichier',
-      submenu: [
-        {
-          label: 'Ouvrir un fichier Markdown…',
-          accelerator: 'CmdOrCtrl+O',
-          click: () => window.webContents.send('menu:open-file')
-        },
-        {
-          label: 'Exporter',
-          submenu: [
-            {
-              label: 'PDF…',
-              click: () => window.webContents.send('menu:export-document', 'pdf')
-            },
-            {
-              label: 'Word (.docx)…',
-              click: () => window.webContents.send('menu:export-document', 'docx')
-            }
-          ]
-        },
-        { type: 'separator' },
-        { role: 'quit', label: 'Quitter' }
-      ]
-    },
-    {
-      label: 'Affichage',
-      submenu: [
-        {
-          label: 'Zoom avant',
-          accelerator: 'CmdOrCtrl+Plus',
-          click: () => window.webContents.setZoomLevel(
-            Math.min(window.webContents.getZoomLevel() + 1, 5)
-          )
-        },
-        {
-          label: 'Zoom arrière',
-          accelerator: 'CmdOrCtrl+-',
-          click: () => window.webContents.setZoomLevel(
-            Math.max(window.webContents.getZoomLevel() - 1, -5)
-          )
-        },
-        {
-          label: 'Taille réelle',
-          accelerator: 'CmdOrCtrl+0',
-          click: () => window.webContents.setZoomLevel(0)
-        }
-      ]
-    }
-  ])
-  Menu.setApplicationMenu(menu)
+  refreshApplicationMenu(window)
 
   if (process.env.ELECTRON_RENDERER_URL) {
     void window.loadURL(process.env.ELECTRON_RENDERER_URL)
@@ -215,7 +295,9 @@ async function readExternalMarkdownFile(filePath: string): Promise<{ path: strin
   if (!fileStats.isFile()) {
     throw new Error('Le chemin demandé ne correspond pas à un fichier.')
   }
-  return { path: filePath, content: await readFile(filePath, 'utf8') }
+  const content = await readFile(filePath, 'utf8')
+  await rememberRecentMarkdownFile(filePath)
+  return { path: filePath, content }
 }
 
 ipcMain.handle('workspace:open-file', async () => {
@@ -516,7 +598,9 @@ ipcMain.handle('workspace:read', async (_event, filePath: string) => {
   if (path.extname(resolvedFile).toLowerCase() !== '.md') {
     throw new Error('Seuls les fichiers Markdown (.md) peuvent être ouverts.')
   }
-  return readFile(resolvedFile, 'utf8')
+  const content = await readFile(resolvedFile, 'utf8')
+  await rememberRecentMarkdownFile(resolvedFile)
+  return content
 })
 
 ipcMain.handle('workspace:write', async (_event, filePath: string, content: string) => {
@@ -698,6 +782,12 @@ if (!hasSingleInstanceLock) {
 
   app.whenReady().then(() => {
     queueMarkdownFileFromArguments(process.argv.slice(1))
+    loadRecentMarkdownFiles().catch((reason: unknown) => {
+      console.error('Impossible de charger les fichiers récents :', reason)
+      recentMarkdownFiles = []
+    }).finally(() => {
+      if (mainWindow) refreshApplicationMenu(mainWindow)
+    })
     createWindow()
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
