@@ -1,7 +1,26 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 contextBridge.exposeInMainWorld('workspace', {
   select: () => ipcRenderer.invoke('workspace:select'),
+  openFile: () => ipcRenderer.invoke('workspace:open-file'),
+  openDroppedFile: (filePath: string) =>
+    ipcRenderer.invoke('workspace:open-dropped-file', filePath),
+  writeExternal: (filePath: string, content: string) =>
+    ipcRenderer.invoke('workspace:write-external', filePath, content),
+  onOpenFile: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('menu:open-file', listener)
+    return () => ipcRenderer.removeListener('menu:open-file', listener)
+  },
+  onFilesDropped: (callback: (filePaths: string[]) => void) => {
+    const listener = (event: DragEvent) => {
+      const filePaths = Array.from(event.dataTransfer?.files ?? [])
+        .map((file) => webUtils.getPathForFile(file))
+      if (filePaths.length > 0) callback(filePaths)
+    }
+    window.addEventListener('drop', listener)
+    return () => window.removeEventListener('drop', listener)
+  },
   restore: () => ipcRenderer.invoke('workspace:restore'),
   rememberDirectory: (directory: string) =>
     ipcRenderer.invoke('workspace:remember-directory', directory),

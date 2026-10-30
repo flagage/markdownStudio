@@ -15,6 +15,7 @@ npm run dev
 ## Features
 
 - Open a local folder and navigate its subfolders.
+- Open a `.md` file directly from the File menu or by dragging it into the application.
 - Browse files and folders sorted alphabetically.
 - Move files and folders by dragging and dropping, or by clicking “Move” and then the destination.
 - Rename a file or folder from its context menu (right-click).

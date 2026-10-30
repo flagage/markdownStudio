@@ -23,6 +23,11 @@ interface RestoredWorkspace {
 interface Window {
   workspace: {
     select: () => Promise<WorkspaceInfo | null>
+    openFile: () => Promise<{ path: string; content: string } | null>
+    openDroppedFile: (filePath: string) => Promise<{ path: string; content: string }>
+    writeExternal: (filePath: string, content: string) => Promise<void>
+    onOpenFile: (callback: () => void) => () => void
+    onFilesDropped: (callback: (filePaths: string[]) => void) => () => void
     restore: () => Promise<RestoredWorkspace | null>
     rememberDirectory: (directory: string) => Promise<void>
     list: (directory: string) => Promise<WorkspaceEntry[]>

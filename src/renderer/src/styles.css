@@ -13,7 +13,8 @@
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 900px; min-height: 100vh; }
 button { font: inherit; cursor: pointer; }
-.app-shell { display: flex; flex-direction: column; height: 100vh; min-height: 600px; }
+.app-shell { position: relative; display: flex; flex-direction: column; height: 100vh; min-height: 600px; }
+.file-drop-overlay { position: absolute; z-index: 40; inset: 12px; display: grid; place-items: center; border: 2px dashed #71866c; border-radius: 12px; background: #f7f7f4eF; color: #40563c; font-size: 18px; font-weight: 600; pointer-events: none; }
 .topbar { height: 62px; display: flex; align-items: center; padding: 0 20px; border-bottom: 1px solid #e8e8e2; background: #fff; gap: 18px; }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 226px; font-size: 14px; font-weight: 700; letter-spacing: -.2px; }
 .brand-mark,.empty-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: #fff; background: #546b50; font-family: 'Literata', serif; font-weight: 600; }

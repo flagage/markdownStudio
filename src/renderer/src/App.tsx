@@ -7,6 +7,7 @@ interface OpenDocument {
   path: string
   content: string
   savedContent: string
+  external: boolean
 }
 
 type NewEntryKind = 'file' | 'directory'
@@ -68,6 +69,7 @@ export default function App() {
   const [templateError, setTemplateError] = useState<string | null>(null)
   const [savingTemplate, setSavingTemplate] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fileDragOver, setFileDragOver] = useState(false)
   const [moveMode, setMoveMode] = useState(false)
   const [draggedEntry, setDraggedEntry] = useState<WorkspaceEntry | null>(null)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
@@ -122,6 +124,11 @@ export default function App() {
     }
   }, [])
 
+  useEffect(() => window.workspace.onOpenFile(() => void openMarkdownFile()), [])
+  useEffect(() => window.workspace.onFilesDropped((filePaths) => {
+    for (const filePath of filePaths) void openDroppedMarkdownFile(filePath)
+  }), [])
+
   useEffect(() => {
     let cancelled = false
     void window.workspace.listTemplates().then((loadedTemplates) => {
@@ -152,6 +159,52 @@ export default function App() {
     }
   }
 
+  async function openMarkdownFile() {
+    if (activePath && !(await saveFile(activePath))) return
+    try {
+      const selected = await window.workspace.openFile()
+      if (selected) openLoadedDocument(selected.path, selected.content, true)
+      setError(null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    }
+  }
+
+  async function openDroppedMarkdownFile(filePath: string) {
+    if (!filePath.toLowerCase().endsWith('.md')) {
+      setError('Seuls les fichiers Markdown (.md) peuvent être ouverts.')
+      return
+    }
+    if (activePath && !(await saveFile(activePath))) return
+    try {
+      const dropped = await window.workspace.openDroppedFile(filePath)
+      openLoadedDocument(dropped.path, dropped.content, true)
+      setError(null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    }
+  }
+
+  function openLoadedDocument(path: string, content: string, external: boolean) {
+    const existing = documents.find((document) => document.path === path)
+    if (existing) {
+      setActivePath(path)
+      if (splitView) {
+        setSplitPaths([path, splitPaths[1] === path ? splitPaths[0] : splitPaths[1]])
+      }
+      return
+    }
+    const previousPath = activePath
+    setDocuments((current) => [...current, {
+      path,
+      content,
+      savedContent: content,
+      external
+    }])
+    setActivePath(path)
+    if (splitView) setSplitPaths([path, previousPath])
+  }
+
   async function openEntry(entry: WorkspaceEntry) {
     if (entry.kind === 'directory') {
       await loadDirectory(entry.path)
@@ -172,7 +225,12 @@ export default function App() {
     try {
       const text = await window.workspace.read(entry.path)
       const previousPath = activePath
-      setDocuments((current) => [...current, { path: entry.path, content: text, savedContent: text }])
+      setDocuments((current) => [...current, {
+        path: entry.path,
+        content: text,
+        savedContent: text,
+        external: false
+      }])
       setActivePath(entry.path)
       if (splitView) setSplitPaths([entry.path, previousPath])
       setError(null)
@@ -195,7 +253,8 @@ export default function App() {
       const document = documentsRef.current.find((item) => item.path === path)
       if (!document || document.content === document.savedContent) return
       const content = document.content
-      await window.workspace.write(path, content)
+      if (document.external) await window.workspace.writeExternal(path, content)
+      else await window.workspace.write(path, content)
       setDocuments((current) =>
         current.map((item) =>
           item.path === path ? { ...item, savedContent: content } : item
@@ -630,7 +689,30 @@ export default function App() {
   ]
 
   return (
-    <main className="app-shell">
+    <main
+      className="app-shell"
+      onDragEnter={(event) => {
+        if (Array.from(event.dataTransfer.types).includes('Files')) setFileDragOver(true)
+      }}
+      onDragOver={(event) => {
+        if (Array.from(event.dataTransfer.types).includes('Files')) {
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'copy'
+          setFileDragOver(true)
+        }
+      }}
+      onDragLeave={(event) => {
+        const nextTarget = event.relatedTarget
+        if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+          setFileDragOver(false)
+        }
+      }}
+      onDrop={(event) => {
+        if (!Array.from(event.dataTransfer.types).includes('Files')) return
+        event.preventDefault()
+        setFileDragOver(false)
+      }}
+    >
       <header className="topbar">
         <div className="brand"><span className="brand-mark">M</span> Markdown Studio</div>
         <div className="document-title">
@@ -639,6 +721,9 @@ export default function App() {
         </div>
         <div className="toolbar">
           <div className="toolbar-group" role="group" aria-label="Espace de travail">
+            <button onClick={() => void openMarkdownFile()} title="Ouvrir un fichier Markdown">
+              <span aria-hidden="true">▤</span> Ouvrir fichier
+            </button>
             <button onClick={() => void openWorkspace()} title="Ouvrir un dossier">
               <span aria-hidden="true">▰</span> Dossier
             </button>
@@ -825,6 +910,11 @@ export default function App() {
           {error && <div className="error-banner" role="alert">{error}</div>}
         </section>
       </div>
+      {fileDragOver && (
+        <div className="file-drop-overlay" role="status">
+          Dépose un fichier Markdown (.md) pour l’ouvrir
+        </div>
+      )}
       {fileContextMenu && (
         <div
           className="file-context-menu"

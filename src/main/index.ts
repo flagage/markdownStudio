@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron'
 import { readdir, readFile, writeFile, mkdir, stat, lstat, rename, copyFile, rm } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { randomUUID } from 'node:crypto'
@@ -99,6 +99,22 @@ function createWindow(): void {
     }
   })
 
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'Fichier',
+      submenu: [
+        {
+          label: 'Ouvrir un fichier Markdown…',
+          accelerator: 'CmdOrCtrl+O',
+          click: () => window.webContents.send('menu:open-file')
+        },
+        { type: 'separator' },
+        { role: 'quit', label: 'Quitter' }
+      ]
+    }
+  ])
+  Menu.setApplicationMenu(menu)
+
   if (process.env.ELECTRON_RENDERER_URL) {
     void window.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
@@ -115,6 +131,41 @@ ipcMain.handle('workspace:select', async () => {
   lastWorkspaceDirectory = '.'
   await persistWorkspacePreferences()
   return { path: workspaceRoot, name: path.basename(workspaceRoot) }
+})
+
+async function readExternalMarkdownFile(filePath: string): Promise<{ path: string; content: string }> {
+  if (!path.isAbsolute(filePath) || path.extname(filePath).toLowerCase() !== '.md') {
+    throw new Error('Seuls les fichiers Markdown (.md) peuvent être ouverts.')
+  }
+  const fileStats = await stat(filePath)
+  if (!fileStats.isFile()) {
+    throw new Error('Le chemin demandé ne correspond pas à un fichier.')
+  }
+  return { path: filePath, content: await readFile(filePath, 'utf8') }
+}
+
+ipcMain.handle('workspace:open-file', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'Fichiers Markdown', extensions: ['md'] }]
+  })
+  if (result.canceled || result.filePaths.length === 0) return null
+  return readExternalMarkdownFile(result.filePaths[0])
+})
+
+ipcMain.handle('workspace:open-dropped-file', async (_event, filePath: string) => {
+  return readExternalMarkdownFile(filePath)
+})
+
+ipcMain.handle('workspace:write-external', async (_event, filePath: string, content: string) => {
+  if (!path.isAbsolute(filePath) || path.extname(filePath).toLowerCase() !== '.md') {
+    throw new Error('Seuls les fichiers Markdown (.md) peuvent être enregistrés.')
+  }
+  const fileStats = await stat(filePath)
+  if (!fileStats.isFile()) {
+    throw new Error('Le chemin demandé ne correspond pas à un fichier.')
+  }
+  await writeFile(filePath, content, 'utf8')
 })
 
 ipcMain.handle('workspace:restore', async () => {
