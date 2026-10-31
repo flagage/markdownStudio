@@ -6,6 +6,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import HTMLtoDOCX from 'html-to-docx'
 import { marked } from 'marked'
+import { markedColumnsExtension } from '../shared/columnsMarkdown'
+
+marked.use(markedColumnsExtension)
 
 let workspaceRoot: string | null = null
 let lastWorkspaceDirectory = '.'
@@ -889,6 +892,11 @@ function createExportHtml(title: string, content: string): string {
     img { max-width: 100%; height: auto; }
     table { width: 100%; border-collapse: collapse; }
     th, td { border: 1px solid #b8bdb4; padding: 5px 8px; text-align: left; }
+    .markdown-columns { width: 100%; table-layout: fixed; border-collapse: collapse; }
+    .markdown-columns td { width: 50%; padding: 0 12px; border: 0; vertical-align: top; }
+    .markdown-columns td:first-child { padding-left: 0; }
+    .markdown-columns td:last-child { padding-right: 0; }
+    .markdown-column > :first-child { margin-top: 0; }
     pre { white-space: pre-wrap; background: #f2f3ef; padding: 10px; }
     blockquote { border-left: 3px solid #aeb8a9; margin-left: 0; padding-left: 12px; color: #60675e; }
   </style>

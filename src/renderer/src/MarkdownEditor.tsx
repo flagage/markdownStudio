@@ -4,7 +4,7 @@ import CodeBlock from '@tiptap/extension-code-block'
 import { Markdown } from '@tiptap/markdown'
 import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { Extension, InputRule, mergeAttributes } from '@tiptap/core'
+import { Extension, InputRule, mergeAttributes, Node as TiptapNode } from '@tiptap/core'
 import type { NodeViewProps } from '@tiptap/core'
 import { Fragment } from '@tiptap/pm/model'
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
@@ -16,6 +16,7 @@ import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
 import MermaidDiagram from './MermaidDiagram'
 import { getMermaidSyntaxHelp, mermaidTemplates } from './mermaidTemplates'
+import { markdownColumnsTokenizer } from '../../shared/columnsMarkdown'
 
 interface SearchHighlightState {
   query: string
@@ -177,6 +178,62 @@ function MermaidCodeBlockView({ node }: NodeViewProps) {
 const MarkdownCodeBlock = CodeBlock.extend({
   addNodeView() {
     return ReactNodeViewRenderer(MermaidCodeBlockView)
+  }
+})
+
+const MarkdownColumn = TiptapNode.create({
+  name: 'markdownColumn',
+  group: 'block',
+  content: 'block+',
+  defining: true,
+
+  parseHTML() {
+    return [{ tag: 'div[data-type="markdown-column"]' }]
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ['div', mergeAttributes(HTMLAttributes, {
+      'data-type': 'markdown-column',
+      class: 'markdown-column'
+    }), 0]
+  }
+})
+
+const MarkdownColumns = TiptapNode.create({
+  name: 'markdownColumns',
+  group: 'block',
+  content: 'markdownColumn markdownColumn',
+  defining: true,
+  isolating: true,
+  markdownTokenName: 'markdownColumns',
+  markdownTokenizer: markdownColumnsTokenizer,
+
+  parseHTML() {
+    return [{ tag: 'div[data-type="markdown-columns"]' }]
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ['div', mergeAttributes(HTMLAttributes, {
+      'data-type': 'markdown-columns',
+      class: 'markdown-columns'
+    }), 0]
+  },
+
+  parseMarkdown(token, helpers) {
+    if (!Array.isArray(token.columnTokens) || token.columnTokens.length !== 2) return []
+    return helpers.createNode('markdownColumns', {}, token.columnTokens.map((tokens) => {
+      const content = helpers.parseChildren(tokens)
+      return helpers.createNode('markdownColumn', {}, content.length > 0
+        ? content
+        : [{ type: 'paragraph' }])
+    }))
+  },
+
+  renderMarkdown(node, helpers) {
+    const columns = node.content ?? []
+    return `::: columns\n${columns.map((column) =>
+      `::: column\n${helpers.renderChildren(column.content ?? [], '\n\n')}`
+    ).join('\n')}\n:::`
   }
 })
 
@@ -383,6 +440,8 @@ export default function MarkdownEditor({
     () => [
       StarterKit.configure({ codeBlock: false, link: { markdownLinks: true } }),
       MarkdownCodeBlock,
+      MarkdownColumns,
+      MarkdownColumn,
       Table.configure({ resizable: true }),
       TableRow,
       TableHeader,
@@ -611,6 +670,17 @@ export default function MarkdownEditor({
     setMermaidPickerOpen(false)
   }
 
+  function insertColumns() {
+    editor.chain().focus().insertContent({
+      type: 'markdownColumns',
+      content: [
+        { type: 'markdownColumn', content: [{ type: 'paragraph' }] },
+        { type: 'markdownColumn', content: [{ type: 'paragraph' }] }
+      ]
+    }).run()
+    setContextMenu(null)
+  }
+
   async function insertImageFromFile() {
     try {
       const image = await window.workspace.selectImage(documentPath, external)
@@ -655,6 +725,7 @@ export default function MarkdownEditor({
             <button type="button" title="Bloc de code" onClick={() => editor.chain().focus().toggleCodeBlock().run()}>&lt;/&gt;</button>
             <button type="button" title="Séparateur" onClick={() => editor.chain().focus().setHorizontalRule().run()}>—</button>
             <button type="button" title="Insérer une image" onClick={() => void insertImageFromFile()}>Image</button>
+            <button type="button" title="Insérer deux colonnes de texte" onClick={insertColumns}>Colonnes</button>
           </>
         )}
         <button
@@ -777,6 +848,14 @@ export default function MarkdownEditor({
                   <div className="context-menu-heading">Insertion</div>
                   <button type="button" role="menuitem" onMouseDown={(event) => event.preventDefault()} onClick={() => runTableAction(() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run())}>
                     Insérer un tableau
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={insertColumns}
+                  >
+                    Insérer deux colonnes de texte
                   </button>
                   <button
                     type="button"

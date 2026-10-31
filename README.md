@@ -34,6 +34,16 @@ npm run dev
 - Edit Mermaid diagrams in the document and switch their blocks between preview and code.
 - Render Mermaid `xychart-beta` charts even when series have different lengths: rendering is limited to categories with a value in every series, and skipped points are reported.
 - Work with images, Markdown tables, and task lists whose checkboxes appear on the same line.
+- Insert two editable text columns from the formatting toolbar; they are saved in Markdown and included in exports. In raw Markdown, the syntax is:
+
+  ```md
+  ::: columns
+  ::: column
+  Texte de gauche
+  ::: column
+  Texte de droite
+  :::
+  ```
 
 ## License
 

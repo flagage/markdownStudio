@@ -136,6 +136,14 @@ kbd { margin-left: 6px; opacity: .72; font: 10px 'DM Mono', monospace; }
 .tiptap-editor th,.tiptap-editor td { position: relative; min-width: 80px; padding: 6px 9px; border: 1px solid #e3e5de; vertical-align: top; }
 .tiptap-editor th { background: #f7f8f5; font-family: 'DM Sans', sans-serif; text-align: left; }
 .tiptap-editor img { max-width: 100%; }
+.tiptap-editor .markdown-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 28px;
+  margin: 1.2em 0;
+}
+.tiptap-editor .markdown-column { min-width: 0; }
 .tiptap-editor ul[data-type="taskList"] { padding: 0; list-style: none; }
 .tiptap-editor li.task-item { display: flex; align-items: flex-start; gap: 8px; }
 .tiptap-editor li.task-item > label { display: inline-flex; flex: 0 0 16px; align-items: flex-start; justify-content: center; margin-top: 6px; line-height: 1; }
@@ -168,6 +176,7 @@ kbd { margin-left: 6px; opacity: .72; font: 10px 'DM Mono', monospace; }
 @media (max-width: 800px) {
   .mermaid-edit-layout { grid-template-columns: minmax(0, 1fr); }
   .mermaid-code-pane,.mermaid-live-preview { min-height: 220px; }
+  .tiptap-editor .markdown-columns { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 }
 .diagram { display: flex; min-width: 0; flex-direction: column; margin: 8px 0 0; padding: 6px; background: #fff; }
 .diagram-toolbar { display: flex; flex: 0 0 auto; align-items: center; gap: 5px; padding: 0 2px 6px; color: #777e74; font: 10px 'DM Mono', monospace; }
@@ -934,6 +943,9 @@ kbd {
   background-color: var(--ui-surface-soft);
   color: var(--ui-text);
 }
+:root[data-theme='dark'] .tiptap-editor .markdown-columns {
+  border-color: var(--ui-border);
+}
 :root[data-theme='dark'] .tiptap-editor a,
 :root[data-theme='dark'] .directory-entry,
 :root[data-theme='dark'] .root-name,
@@ -1065,6 +1077,10 @@ textarea:focus-visible,
   .tiptap-editor img,
   .tiptap-editor table,
   .mermaid-preview { break-inside: avoid; }
+  .tiptap-editor .markdown-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
   .tiptap-editor .search-highlight {
     background: transparent;
     box-shadow: none;
