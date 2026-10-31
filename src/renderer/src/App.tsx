@@ -1,7 +1,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import MarkdownEditor from './MarkdownEditor'
+import LogoMark from './LogoMark'
 
 type Theme = 'light' | 'dark'
+
+const defaultBrandColor = '#546b50'
+
+function isHexColor(value: string | null): value is string {
+  return value !== null && /^#[\da-f]{6}$/i.test(value)
+}
 
 interface PageFindRequest {
   query: string
@@ -78,6 +85,11 @@ function countExactWordMatches(text: string, query: string): number {
 }
 
 export default function App() {
+  const [brandColor, setBrandColor] = useState(() => {
+    const savedColor = window.localStorage.getItem('markdown-studio-brand-color')
+    return isHexColor(savedColor) ? savedColor : defaultBrandColor
+  })
+  const [brandColorPickerOpen, setBrandColorPickerOpen] = useState(false)
   const [theme, setTheme] = useState<Theme>(() => {
     const savedTheme = window.localStorage.getItem('markdown-studio-theme')
     if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme
@@ -127,6 +139,7 @@ export default function App() {
   const documentsRef = useRef(documents)
   const saveQueues = useRef(new Map<string, Promise<void>>())
   const openMarkdownFileRef = useRef<() => void>(() => {})
+  const printDocumentRef = useRef<() => void>(() => {})
   const exportDocumentRef = useRef<(format: 'pdf' | 'docx' | 'eml') => Promise<void>>(
     async () => {}
   )
@@ -137,6 +150,7 @@ export default function App() {
   )
   const searchInputRef = useRef<HTMLInputElement>(null)
   const pageSearchInputRef = useRef<HTMLInputElement>(null)
+  const brandRef = useRef<HTMLDivElement>(null)
   documentsRef.current = documents
   const activeDocument = documents.find((document) => document.path === activePath) ?? null
   const pageSearchMatchCount = useMemo(
@@ -148,6 +162,28 @@ export default function App() {
     window.localStorage.setItem('markdown-studio-theme', theme)
     window.dispatchEvent(new CustomEvent('markdown-studio-theme-change', { detail: theme }))
   }, [theme])
+  useLayoutEffect(() => {
+    document.documentElement.style.setProperty('--brand-color', brandColor)
+    window.localStorage.setItem('markdown-studio-brand-color', brandColor)
+  }, [brandColor])
+
+  useEffect(() => {
+    if (!brandColorPickerOpen) return
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (event.target instanceof Node && !brandRef.current?.contains(event.target)) {
+        setBrandColorPickerOpen(false)
+      }
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setBrandColorPickerOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsideClick)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [brandColorPickerOpen])
 
   const parentDirectory = useMemo(() => {
     if (directory === '.') return null
@@ -255,6 +291,7 @@ export default function App() {
   }
 
   useEffect(() => window.workspace.onOpenFile(() => openMarkdownFileRef.current()), [])
+  useEffect(() => window.workspace.onPrintDocument(() => printDocumentRef.current()), [])
   useEffect(() => window.workspace.onExportDocument((format) => {
     void exportDocumentRef.current(format)
   }), [])
@@ -447,6 +484,15 @@ export default function App() {
     }
     return true
   }
+
+  function printDocument() {
+    if (!activePath || !documentsRef.current.some((document) => document.path === activePath)) {
+      setError('Aucun document Markdown actif à imprimer.')
+      return
+    }
+    window.print()
+  }
+  printDocumentRef.current = printDocument
 
   async function exportDocument(format: 'pdf' | 'docx' | 'eml') {
     if (!activePath || !(await saveFile(activePath))) return
@@ -993,7 +1039,41 @@ export default function App() {
       }}
     >
       <header className="topbar">
-        <div className="brand"><span className="brand-mark">M</span> Markdown Studio</div>
+        <div className="brand" ref={brandRef}>
+          <button
+            className="brand-logo-button"
+            type="button"
+            aria-label="Personnaliser la couleur du logo"
+            aria-expanded={brandColorPickerOpen}
+            title="Personnaliser la couleur du logo"
+            onClick={() => setBrandColorPickerOpen((open) => !open)}
+          >
+            <LogoMark className="brand-mark" />
+          </button>
+          <span>Markdown Studio</span>
+          {brandColorPickerOpen && (
+            <div className="brand-color-panel" role="dialog" aria-label="Personnaliser le logo">
+              <button
+                className="brand-color-close"
+                type="button"
+                aria-label="Fermer"
+                onClick={() => setBrandColorPickerOpen(false)}
+              >×</button>
+              <label htmlFor="brand-color">Couleur du logo</label>
+              <input
+                id="brand-color"
+                type="color"
+                value={brandColor}
+                onChange={(event) => setBrandColor(event.target.value)}
+              />
+              <button
+                className="brand-color-reset"
+                type="button"
+                onClick={() => setBrandColor(defaultBrandColor)}
+              >Réinitialiser</button>
+            </div>
+          )}
+        </div>
         <div className="document-title">
           {activeDocument ? activeDocument.path.split(/[\\/]/).at(-1) : 'Aucun document ouvert'}
           {activeDocument?.content !== activeDocument?.savedContent && <span className="unsaved"> • non enregistré</span>}
@@ -1025,6 +1105,13 @@ export default function App() {
             <span aria-hidden="true">↓</span> Enregistrer <kbd>Ctrl S</kbd>
           </button>
           <button
+            onClick={printDocument}
+            disabled={!activeDocument}
+            title="Imprimer le document actif"
+          >
+            <span aria-hidden="true">▤</span> Imprimer
+          </button>
+          <button
             className="theme-toggle"
             onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')}
             aria-label={`Activer le mode ${theme === 'dark' ? 'clair' : 'sombre'}`}
@@ -1040,26 +1127,26 @@ export default function App() {
       <div className="workspace">
         <aside className="sidebar">
           <div className="sidebar-heading">
-            <span>EXPLORATEUR</span>
+            <span
+              className={dropTarget === '.'
+                ? 'root-name-drop-target'
+                : moveMode ? 'root-name-move-target' : ''}
+              onDragOver={(event) => {
+                if (draggedEntry) {
+                  event.preventDefault()
+                  setDropTarget('.')
+                }
+              }}
+              onDragLeave={() => setDropTarget(null)}
+              onDrop={(event) => handleDrop(event, '.')}
+              onClick={() => {
+                if (moveMode && draggedEntry) void moveEntry(draggedEntry, '.')
+              }}
+            >EXPLORATEUR</span>
             <button className="icon-button" onClick={openTemplateManager}>Modèles</button>
           </div>
           {workspace ? (
             <>
-              <div
-                className={`root-name ${dropTarget === '.' ? 'drop-target' : ''}`}
-                title={workspace.path}
-                onDragOver={(event) => {
-                  if (draggedEntry) {
-                    event.preventDefault()
-                    setDropTarget('.')
-                  }
-                }}
-                onDragLeave={() => setDropTarget(null)}
-                onDrop={(event) => handleDrop(event, '.')}
-                onClick={() => {
-                  if (moveMode && draggedEntry) void moveEntry(draggedEntry, '.')
-                }}
-              >▾ &nbsp;{workspace.name}</div>
               <div className="workspace-search">
                 <div className="workspace-search-input">
                   <span aria-hidden="true">⌕</span>
@@ -1212,7 +1299,7 @@ export default function App() {
             </div>
           ) : (
             <div className="empty-state">
-              <div className="empty-icon">M</div>
+              <LogoMark className="empty-icon" />
               <h1>Ton espace d’écriture</h1>
               <p>Ouvre un dossier ou crée une note Markdown pour commencer.</p>
               {!workspace && <button className="primary" onClick={() => void openWorkspace()}>Ouvrir un dossier</button>}

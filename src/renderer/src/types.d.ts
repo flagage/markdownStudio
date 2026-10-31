@@ -33,6 +33,7 @@ interface Window {
     openDroppedFile: (filePath: string) => Promise<{ path: string; content: string }>
     writeExternal: (filePath: string, content: string) => Promise<void>
     onOpenFile: (callback: () => void) => () => void
+    onPrintDocument: (callback: () => void) => () => void
     exportDocument: (
       format: 'pdf' | 'docx' | 'eml',
       markdown: string,

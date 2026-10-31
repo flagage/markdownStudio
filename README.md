@@ -25,6 +25,8 @@ npm run dev
 - Create folders and `.md` files.
 - Create Markdown templates, manage them from the explorer, or turn an existing file into a template using its context menu (right-click). Templates are available in all workspaces and can be used when creating a file.
 - Edit and save files with `Ctrl+S` or `Cmd+S`.
+- Print the active note with `Ctrl+P` or `Cmd+P`, from the File menu or toolbar.
+- Customize the Markdown Studio logo color by clicking the logo; the choice is saved on this device.
 - Write directly in a formatted view, with a toolbar for headings, bold, italics, lists, quotes, and code blocks.
 - Insert PNG, JPEG, GIF, WebP, or BMP images from the editor toolbar; images are copied beside the Markdown document and referenced with a relative link, then displayed inline.
 - Switch between visual editing and raw Markdown at any time.

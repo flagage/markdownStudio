@@ -701,14 +701,17 @@ export default function MarkdownEditor({
       {imageError && <div className="image-error" role="alert">{imageError}</div>}
       <div className={`writing-surface ${rawMarkdownMode ? 'raw-markdown-surface' : ''}`}>
         {rawMarkdownMode ? (
-          <textarea
-            ref={rawMarkdownEditorRef}
-            className="raw-markdown-editor"
-            aria-label="Markdown brut"
-            spellCheck={false}
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-          />
+          <>
+            <textarea
+              ref={rawMarkdownEditorRef}
+              className="raw-markdown-editor"
+              aria-label="Markdown brut"
+              spellCheck={false}
+              value={value}
+              onChange={(event) => onChange(event.target.value)}
+            />
+            <pre className="raw-markdown-print">{value}</pre>
+          </>
         ) : (
           <div className="visual-editor-surface" onContextMenu={showContextMenu}>
             <EditorContent editor={editor} />

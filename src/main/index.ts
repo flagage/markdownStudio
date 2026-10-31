@@ -394,6 +394,11 @@ function refreshApplicationMenu(window: BrowserWindow): void {
           click: () => window.webContents.send('menu:open-file')
         },
         {
+          label: 'Imprimer…',
+          accelerator: 'CmdOrCtrl+P',
+          click: () => window.webContents.send('menu:print-document')
+        },
+        {
           label: 'Fichiers récents',
           submenu: recentMenuItems
         },

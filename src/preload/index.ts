@@ -12,6 +12,11 @@ contextBridge.exposeInMainWorld('workspace', {
     ipcRenderer.on('menu:open-file', listener)
     return () => ipcRenderer.removeListener('menu:open-file', listener)
   },
+  onPrintDocument: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('menu:print-document', listener)
+    return () => ipcRenderer.removeListener('menu:print-document', listener)
+  },
   exportDocument: (format: 'pdf' | 'docx' | 'eml', markdown: string, markdownPath: string) =>
     ipcRenderer.invoke('document:export', format, markdown, markdownPath) as Promise<string | null>,
   onExportDocument: (callback: (format: 'pdf' | 'docx' | 'eml') => void) => {
