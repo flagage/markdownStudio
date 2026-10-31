@@ -34,11 +34,11 @@ interface Window {
     writeExternal: (filePath: string, content: string) => Promise<void>
     onOpenFile: (callback: () => void) => () => void
     exportDocument: (
-      format: 'pdf' | 'docx',
+      format: 'pdf' | 'docx' | 'eml',
       markdown: string,
       markdownPath: string
     ) => Promise<string | null>
-    onExportDocument: (callback: (format: 'pdf' | 'docx') => void) => () => void
+    onExportDocument: (callback: (format: 'pdf' | 'docx' | 'eml') => void) => () => void
     onWordPressSettings: (callback: () => void) => () => void
     onWordPressPublish: (callback: () => void) => () => void
     getWordPressSettings: () => Promise<WordPressSettingsSummary>

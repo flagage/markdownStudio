@@ -420,6 +420,10 @@ function refreshApplicationMenu(window: BrowserWindow): void {
             {
               label: 'Word (.docx)…',
               click: () => window.webContents.send('menu:export-document', 'docx')
+            },
+            {
+              label: 'E-mail (.eml)…',
+              click: () => window.webContents.send('menu:export-document', 'eml')
             }
           ]
         },
@@ -729,7 +733,11 @@ ipcMain.handle(
     publishWordPressDraft(markdown, markdownPath)
 )
 
-async function embedLocalImages(html: string, markdownPath: string): Promise<string> {
+async function embedLocalImages(
+  html: string,
+  markdownPath: string,
+  rejectUnsupportedFormats = false
+): Promise<string> {
   const documentDirectory = path.dirname(markdownPath)
   const imageTagPattern = /<img\b[^>]*\bsrc=(["'])(.*?)\1[^>]*>/gi
   let result = ''
@@ -737,19 +745,34 @@ async function embedLocalImages(html: string, markdownPath: string): Promise<str
 
   for (const match of html.matchAll(imageTagPattern)) {
     const imageTag = match[0]
-    const src = match[2]
+    const src = decodeHtmlEntities(match[2])
     let imagePath: string | null = null
 
     if (src.startsWith('file://')) {
-      imagePath = fileURLToPath(src)
+      try {
+        imagePath = fileURLToPath(src)
+      } catch {
+        throw new Error(`Le chemin de l’image « ${src} » est invalide.`)
+      }
     } else if (!/^[a-z][a-z\d+.-]*:/i.test(src) && !src.startsWith('/')) {
-      imagePath = path.resolve(documentDirectory, decodeURIComponent(src))
+      try {
+        imagePath = path.resolve(
+          documentDirectory,
+          decodeURIComponent(src.split(/[?#]/, 1)[0])
+        )
+      } catch {
+        throw new Error(`Le chemin de l’image « ${src} » est invalide.`)
+      }
     }
 
     let outputTag = imageTag
     if (imagePath) {
       const mimeType = imageMimeTypes[path.extname(imagePath).toLowerCase()]
-      if (mimeType) {
+      if (!mimeType) {
+        if (rejectUnsupportedFormats) {
+          throw new Error(`Le format de l’image « ${path.basename(imagePath)} » n’est pas pris en charge.`)
+        }
+      } else {
         const imageStats = await stat(imagePath)
         if (!imageStats.isFile()) throw new Error(`L’image « ${path.basename(imagePath)} » est introuvable.`)
         if (imageStats.size > 20 * 1024 * 1024) {
@@ -758,7 +781,7 @@ async function embedLocalImages(html: string, markdownPath: string): Promise<str
         const image = await readFile(imagePath)
         const dataUrl = `data:${mimeType};base64,${image.toString('base64')}`
         outputTag = imageTag.replace(
-          `src=${match[1]}${src}${match[1]}`,
+          `src=${match[1]}${match[2]}${match[1]}`,
           `src=${match[1]}${dataUrl}${match[1]}`
         )
       }
@@ -769,6 +792,73 @@ async function embedLocalImages(html: string, markdownPath: string): Promise<str
   }
 
   return result + html.slice(previousIndex)
+}
+
+function encodeMimeBase64(value: Buffer | string): string {
+  const encoded = (Buffer.isBuffer(value) ? value : Buffer.from(value)).toString('base64')
+  return encoded.match(/.{1,76}/g)?.join('\r\n') ?? ''
+}
+
+function createEmailMessage(title: string, content: string): string {
+  const boundary = `markdown-studio-${randomUUID()}`
+  const imageTagPattern = /<img\b[^>]*\bsrc=(["'])(data:image\/[a-z\d.+-]+;base64,([^"']+))\1[^>]*>/gi
+  const imageParts: string[] = []
+  let html = ''
+  let previousIndex = 0
+
+  for (const match of content.matchAll(imageTagPattern)) {
+    const contentId = randomUUID()
+    const imageBytes = Buffer.from(match[3], 'base64')
+    const imageTag = match[0].replace(
+      `src=${match[1]}${match[2]}${match[1]}`,
+      `src=${match[1]}cid:${contentId}${match[1]}`
+    )
+    imageParts.push([
+      `--${boundary}`,
+      `Content-Type: ${match[2].slice(5, match[2].indexOf(';'))}`,
+      'Content-Transfer-Encoding: base64',
+      `Content-ID: <${contentId}>`,
+      `Content-Disposition: inline; filename="${contentId}"`,
+      '',
+      encodeMimeBase64(imageBytes)
+    ].join('\r\n'))
+    html += content.slice(previousIndex, match.index) + imageTag
+    previousIndex = match.index + match[0].length
+  }
+  html += content.slice(previousIndex)
+
+  const escapedTitle = title.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[character]!)
+  const emailHtml = `<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>${escapedTitle}</title>
+  <style>body{color:#242726;font:11pt/1.6 Arial,sans-serif}img{max-width:100%;height:auto}table{width:100%;border-collapse:collapse}th,td{border:1px solid #b8bdb4;padding:5px 8px;text-align:left}pre{white-space:pre-wrap;background:#f2f3ef;padding:10px}blockquote{border-left:3px solid #aeb8a9;margin-left:0;padding-left:12px;color:#60675e}</style>
+</head>
+<body>${html}</body>
+</html>`
+  const emailContentId = randomUUID()
+  return [
+    `Subject: =?UTF-8?B?${Buffer.from(title).toString('base64')}?=`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/related; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    `Content-ID: <${emailContentId}>`,
+    '',
+    encodeMimeBase64(emailHtml),
+    ...imageParts,
+    `--${boundary}--`,
+    ''
+  ].join('\r\n')
 }
 
 function createExportHtml(title: string, content: string): string {
@@ -806,22 +896,26 @@ ipcMain.handle(
   'document:export',
   async (
     event,
-    format: 'pdf' | 'docx',
+    format: 'pdf' | 'docx' | 'eml',
     markdown: string,
     markdownPath: string
   ) => {
-    if ((format !== 'pdf' && format !== 'docx') || typeof markdown !== 'string' ||
+    if ((format !== 'pdf' && format !== 'docx' && format !== 'eml') || typeof markdown !== 'string' ||
       typeof markdownPath !== 'string' || !path.isAbsolute(markdownPath) ||
       path.extname(markdownPath).toLowerCase() !== '.md') {
       throw new Error('Les informations du document à exporter sont invalides.')
     }
 
     const title = path.basename(markdownPath, path.extname(markdownPath))
+    const formatLabel = format === 'pdf'
+      ? 'PDF'
+      : format === 'docx' ? 'Word' : 'e-mail'
     const saveDialogOptions = {
-      title: format === 'pdf' ? 'Exporter en PDF' : 'Exporter vers Word',
+      title: `Exporter vers ${formatLabel}`,
       defaultPath: path.join(path.dirname(markdownPath), `${title}.${format}`),
       filters: [{
-        name: format === 'pdf' ? 'Document PDF' : 'Document Word',
+        name: format === 'pdf' ? 'Document PDF' : format === 'docx'
+          ? 'Document Word' : 'Message e-mail',
         extensions: [format]
       }]
     }
@@ -832,7 +926,13 @@ ipcMain.handle(
     if (result.canceled || !result.filePath) return null
 
     const renderedMarkdown = await marked.parse(markdown, { gfm: true })
-    const html = createExportHtml(title, await embedLocalImages(renderedMarkdown, markdownPath))
+    const htmlWithImages = await embedLocalImages(renderedMarkdown, markdownPath, format === 'eml')
+    if (format === 'eml') {
+      await writeFile(result.filePath, createEmailMessage(title, htmlWithImages), 'utf8')
+      return result.filePath
+    }
+
+    const html = createExportHtml(title, htmlWithImages)
     if (format === 'docx') {
       const converted = await HTMLtoDOCX(html, null, {
         title,

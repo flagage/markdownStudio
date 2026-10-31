@@ -127,7 +127,7 @@ export default function App() {
   const documentsRef = useRef(documents)
   const saveQueues = useRef(new Map<string, Promise<void>>())
   const openMarkdownFileRef = useRef<() => void>(() => {})
-  const exportDocumentRef = useRef<(format: 'pdf' | 'docx') => Promise<void>>(
+  const exportDocumentRef = useRef<(format: 'pdf' | 'docx' | 'eml') => Promise<void>>(
     async () => {}
   )
   const openWordpressSettingsRef = useRef<() => Promise<void>>(async () => {})
@@ -448,7 +448,7 @@ export default function App() {
     return true
   }
 
-  async function exportDocument(format: 'pdf' | 'docx') {
+  async function exportDocument(format: 'pdf' | 'docx' | 'eml') {
     if (!activePath || !(await saveFile(activePath))) return
     const document = documentsRef.current.find((item) => item.path === activePath)
     if (!document) {
