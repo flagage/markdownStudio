@@ -61,6 +61,7 @@ interface Window {
     restore: () => Promise<RestoredWorkspace | null>
     rememberDirectory: (directory: string) => Promise<void>
     list: (directory: string) => Promise<WorkspaceEntry[]>
+    search: (directory: string, query: string) => Promise<WorkspaceEntry[]>
     read: (filePath: string) => Promise<string>
     write: (filePath: string, content: string) => Promise<void>
     create: (

@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 import CodeBlock from '@tiptap/extension-code-block'
 import { Markdown } from '@tiptap/markdown'
 import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { InputRule, mergeAttributes } from '@tiptap/core'
+import { Extension, InputRule, mergeAttributes } from '@tiptap/core'
 import type { NodeViewProps } from '@tiptap/core'
 import { Fragment } from '@tiptap/pm/model'
-import { TextSelection } from '@tiptap/pm/state'
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
 import Image, { inputRegex as imageInputRegex } from '@tiptap/extension-image'
 import type { ImageOptions } from '@tiptap/extension-image'
@@ -14,6 +16,93 @@ import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
 import MermaidDiagram from './MermaidDiagram'
 import { getMermaidSyntaxHelp, mermaidTemplates } from './mermaidTemplates'
+
+interface SearchHighlightState {
+  query: string
+  decorations: DecorationSet
+}
+
+const searchHighlightPluginKey = new PluginKey<SearchHighlightState>('searchHighlight')
+
+function createSearchHighlightDecorations(doc: Parameters<typeof DecorationSet.create>[0], query: string) {
+  if (!query) return DecorationSet.empty
+
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const pattern = new RegExp(
+    `(^|[^\\p{L}\\p{N}\\p{M}_])(${escapedQuery})(?=$|[^\\p{L}\\p{N}\\p{M}_])`,
+    'giu'
+  )
+  const decorations: Decoration[] = []
+
+  doc.descendants((block, blockPosition) => {
+    if (!block.isTextblock) return
+    let text = ''
+    let runStart = -1
+    let runEnd = -1
+
+    const addRunDecorations = () => {
+      if (!text || runStart < 0) return
+      for (const match of text.matchAll(pattern)) {
+        const from = runStart + (match.index ?? 0) + match[1].length
+        decorations.push(Decoration.inline(from, from + match[2].length, {
+          class: 'search-highlight'
+        }))
+      }
+    }
+
+    block.descendants((child, childPosition) => {
+      if (!child.isText || !child.text) {
+        runEnd = -1
+        return
+      }
+      const position = blockPosition + 1 + childPosition
+      if (position !== runEnd) {
+        addRunDecorations()
+        text = child.text
+        runStart = position
+      } else {
+        text += child.text
+      }
+      runEnd = position + child.nodeSize
+    })
+    addRunDecorations()
+    return false
+  })
+
+  return DecorationSet.create(doc, decorations)
+}
+
+const SearchHighlight = Extension.create({
+  name: 'searchHighlight',
+
+  addProseMirrorPlugins() {
+    return [new Plugin<SearchHighlightState>({
+      key: searchHighlightPluginKey,
+      state: {
+        init: () => ({ query: '', decorations: DecorationSet.empty }),
+        apply: (transaction, current, _oldState, newState) => {
+          const nextQuery: unknown = transaction.getMeta(searchHighlightPluginKey)
+          if (typeof nextQuery === 'string') {
+            return {
+              query: nextQuery,
+              decorations: createSearchHighlightDecorations(newState.doc, nextQuery)
+            }
+          }
+          if (transaction.docChanged) {
+            return {
+              ...current,
+              decorations: createSearchHighlightDecorations(newState.doc, current.query)
+            }
+          }
+          return current
+        }
+      },
+      props: {
+        decorations: (state) => searchHighlightPluginKey.getState(state)?.decorations ?? null
+      }
+    })]
+  }
+})
 
 function MermaidCodeBlockView({ node }: NodeViewProps) {
   const [editing, setEditing] = useState(false)
@@ -250,12 +339,30 @@ function normalizeAtxHeadingSpacing(markdown: string): string {
 export default function MarkdownEditor({
   value,
   onChange,
+  findRequest,
+  findQuery,
+  findInputRef,
+  findMatchCount,
+  onFindQueryChange,
+  onFindNext,
   documentPath,
   external,
   imageBaseUrl
 }: {
   value: string
   onChange: (markdown: string) => void
+  findRequest: {
+    query: string
+    direction: 'previous' | 'next'
+    focusEditor: boolean
+    advance: boolean
+    sequence: number
+  } | null
+  findQuery: string
+  findInputRef: RefObject<HTMLInputElement | null> | null
+  findMatchCount: number
+  onFindQueryChange: (query: string) => void
+  onFindNext: (direction: 'previous' | 'next') => void
   documentPath: string
   external: boolean
   imageBaseUrl: string
@@ -271,6 +378,7 @@ export default function MarkdownEditor({
   const [mermaidPickerOpen, setMermaidPickerOpen] = useState(false)
   const [selectedMermaidTemplateId, setSelectedMermaidTemplateId] = useState('flowchart-v2')
   const [rawMarkdownMode, setRawMarkdownMode] = useState(false)
+  const rawMarkdownEditorRef = useRef<HTMLTextAreaElement>(null)
   const extensions = useMemo(
     () => [
       StarterKit.configure({ codeBlock: false, link: { markdownLinks: true } }),
@@ -282,6 +390,7 @@ export default function MarkdownEditor({
       TaskList,
       MarkdownTaskItem.configure({ nested: true, HTMLAttributes: { class: 'task-item' } }),
       MarkdownImage.configure({ baseUrl: imageBaseUrl }),
+      SearchHighlight,
       Markdown
     ],
     [imageBaseUrl]
@@ -309,6 +418,73 @@ export default function MarkdownEditor({
       })
     }
   }, [editor, rawMarkdownMode, value])
+
+  useEffect(() => {
+    if (!editor) return
+    const query = findQuery.trim()
+    if (searchHighlightPluginKey.getState(editor.state)?.query === query) return
+    editor.view.dispatch(editor.state.tr.setMeta(searchHighlightPluginKey, query))
+  }, [editor, findQuery])
+
+  useEffect(() => {
+    if (!editor || !findRequest?.query) return
+
+    const escapedQuery = findRequest.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const pattern = new RegExp(
+      `(^|[^\\p{L}\\p{N}\\p{M}_])(${escapedQuery})(?=$|[^\\p{L}\\p{N}\\p{M}_])`,
+      'giu'
+    )
+
+    if (rawMarkdownMode) {
+      const textarea = rawMarkdownEditorRef.current
+      if (!textarea) return
+      const matches = Array.from(textarea.value.matchAll(pattern), (match) => {
+        const from = (match.index ?? 0) + match[1].length
+        return { from, to: from + match[2].length }
+      })
+      if (matches.length === 0) return
+      const currentPosition = findRequest.direction === 'next'
+        ? textarea.selectionEnd
+        : textarea.selectionStart
+      const match = findRequest.direction === 'next'
+        ? matches.find((item) => findRequest.advance
+          ? item.from > currentPosition
+          : item.from >= currentPosition) ?? matches[0]
+        : [...matches].reverse().find((item) => item.to <= currentPosition) ?? matches.at(-1)
+      if (!match) return
+      textarea.setSelectionRange(match.from, match.from)
+      if (findRequest.focusEditor) textarea.focus()
+      return
+    }
+
+    const matches: Array<{ from: number; to: number }> = []
+    const { doc } = editor.state
+    doc.descendants((node, position) => {
+      if (!node.isText || !node.text) return
+      for (const match of node.text.matchAll(pattern)) {
+        const from = position + (match.index ?? 0) + match[1].length
+        const to = from + match[2].length
+        const previousCharacter = from > 0 ? doc.textBetween(from - 1, from) : ''
+        const nextCharacter = to < doc.content.size ? doc.textBetween(to, to + 1) : ''
+        if (/[\p{L}\p{N}\p{M}_]/u.test(previousCharacter) ||
+          /[\p{L}\p{N}\p{M}_]/u.test(nextCharacter)) continue
+        matches.push({ from, to })
+      }
+    })
+    if (matches.length === 0) return
+    const selection = editor.state.selection
+    const selectedMatch = findRequest.direction === 'next'
+      ? matches.find((item) => findRequest.advance
+        ? item.from > selection.from
+        : item.from >= selection.to) ?? matches[0]
+      : [...matches].reverse().find((item) => item.to <= selection.from) ?? matches.at(-1)
+    if (!selectedMatch) return
+    const navigation = editor.chain()
+      .setTextSelection(selectedMatch.from)
+      .scrollIntoView()
+    if (findRequest.focusEditor) navigation.focus()
+    navigation.run()
+  }, [editor, findRequest?.sequence])
 
   useEffect(() => {
     if (!contextMenu && !mermaidPickerOpen) return
@@ -490,11 +666,43 @@ export default function MarkdownEditor({
         >
           {rawMarkdownMode ? 'Mode visuel' : 'Markdown brut'}
         </button>
+        <div className="page-find-toolbar" role="search" aria-label="Rechercher dans cette page">
+          <input
+            ref={findInputRef}
+            type="search"
+            value={findQuery}
+            onChange={(event) => onFindQueryChange(event.target.value)}
+            placeholder="Rechercher dans la page…"
+            aria-label="Rechercher un mot dans cette page"
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <button
+            type="button"
+            aria-label="Occurrence précédente"
+            title="Occurrence précédente"
+            disabled={findMatchCount === 0}
+            onClick={() => onFindNext('previous')}
+          >↑</button>
+          <button
+            type="button"
+            aria-label="Occurrence suivante"
+            title="Occurrence suivante"
+            disabled={findMatchCount === 0}
+            onClick={() => onFindNext('next')}
+          >↓</button>
+          {findQuery.trim() && (
+            <span className="page-find-count" aria-live="polite">
+              {findMatchCount}
+            </span>
+          )}
+        </div>
       </div>
       {imageError && <div className="image-error" role="alert">{imageError}</div>}
       <div className={`writing-surface ${rawMarkdownMode ? 'raw-markdown-surface' : ''}`}>
         {rawMarkdownMode ? (
           <textarea
+            ref={rawMarkdownEditorRef}
             className="raw-markdown-editor"
             aria-label="Markdown brut"
             spellCheck={false}

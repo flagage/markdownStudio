@@ -61,6 +61,8 @@ contextBridge.exposeInMainWorld('workspace', {
   rememberDirectory: (directory: string) =>
     ipcRenderer.invoke('workspace:remember-directory', directory),
   list: (directory: string) => ipcRenderer.invoke('workspace:list', directory),
+  search: (directory: string, query: string) =>
+    ipcRenderer.invoke('workspace:search', directory, query),
   read: (filePath: string) => ipcRenderer.invoke('workspace:read', filePath),
   write: (filePath: string, content: string) =>
     ipcRenderer.invoke('workspace:write', filePath, content),

@@ -12,9 +12,15 @@ let lastWorkspaceDirectory = '.'
 let preferencesWrite = Promise.resolve()
 let recentFilesWrite = Promise.resolve()
 let mainWindow: BrowserWindow | null = null
+let workspaceSearchGeneration = 0
 const pendingMarkdownFiles: string[] = []
 let recentMarkdownFiles: string[] = []
 const maxRecentMarkdownFiles = 10
+const markdownSearchIndex = new Map<string, {
+  size: number
+  modifiedAt: number
+  content: string
+}>()
 const wordpressImageMimeTypes: Record<string, string> = {
   '.bmp': 'image/bmp',
   '.gif': 'image/gif',
@@ -552,6 +558,102 @@ function resolveInsideWorkspace(targetPath: string): string {
   return resolved
 }
 
+async function searchWorkspace(
+  directory: string,
+  query: string,
+  isObsolete: () => boolean
+) {
+  if (typeof query !== 'string' || !query.trim()) {
+    throw new Error('Le terme de recherche est invalide.')
+  }
+  const resolvedDirectory = resolveInsideWorkspace(directory)
+  if (!(await stat(resolvedDirectory)).isDirectory()) {
+    throw new Error('Le dossier demandé n’est pas valide.')
+  }
+
+  const directories = [resolvedDirectory]
+  const filePaths: string[] = []
+  while (directories.length > 0 && !isObsolete()) {
+    const batch = directories.splice(0, 8)
+    const batches = await Promise.all(batch.map((directoryPath) =>
+      readdir(directoryPath, { withFileTypes: true })
+    ))
+    for (let index = 0; index < batch.length; index += 1) {
+      for (const entry of batches[index]) {
+        if (entry.name.startsWith('.')) continue
+        const entryPath = path.join(batch[index], entry.name)
+        if (entry.isDirectory()) directories.push(entryPath)
+        else if (entry.isFile() && path.extname(entry.name).toLowerCase() === '.md') {
+          filePaths.push(entryPath)
+        }
+      }
+    }
+  }
+
+  const queryLower = query.trim().toLowerCase()
+  const escapedQuery = queryLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const exactWordPattern = new RegExp(
+    `(^|[^\\p{L}\\p{N}\\p{M}_])(${escapedQuery})(?=$|[^\\p{L}\\p{N}\\p{M}_])`,
+    'iu'
+  )
+  const matchingFiles: Array<{ name: string; path: string; kind: 'file' }> = []
+  const indexedPaths = new Set(filePaths)
+  let nextFileIndex = 0
+  await Promise.all(Array.from({ length: Math.min(8, filePaths.length) }, async () => {
+    while (nextFileIndex < filePaths.length && !isObsolete()) {
+      const filePath = filePaths[nextFileIndex]
+      nextFileIndex += 1
+      let fileStats
+      try {
+        fileStats = await stat(filePath)
+      } catch (reason) {
+        if (reason instanceof Error && 'code' in reason && reason.code === 'ENOENT') continue
+        throw reason
+      }
+      let indexedFile = markdownSearchIndex.get(filePath)
+      if (!indexedFile || indexedFile.size !== fileStats.size ||
+        indexedFile.modifiedAt !== fileStats.mtimeMs) {
+        let content: string
+        try {
+          content = await readFile(filePath, 'utf8')
+        } catch (reason) {
+          if (reason instanceof Error && 'code' in reason && reason.code === 'ENOENT') continue
+          throw reason
+        }
+        indexedFile = {
+          size: fileStats.size,
+          modifiedAt: fileStats.mtimeMs,
+          content: content.toLowerCase()
+        }
+        markdownSearchIndex.set(filePath, indexedFile)
+      }
+      if (exactWordPattern.test(indexedFile.content)) {
+        matchingFiles.push({
+          name: path.basename(filePath),
+          path: path.relative(workspaceRoot!, filePath),
+          kind: 'file'
+        })
+      }
+    }
+  }))
+
+  if (isObsolete()) return []
+
+  for (const indexedPath of markdownSearchIndex.keys()) {
+    const relativePath = path.relative(resolvedDirectory, indexedPath)
+    const isInSearchedDirectory = relativePath === '' ||
+      (!relativePath.startsWith(`..${path.sep}`) && relativePath !== '..' &&
+        !path.isAbsolute(relativePath))
+    if (isInSearchedDirectory && !indexedPaths.has(indexedPath)) {
+      markdownSearchIndex.delete(indexedPath)
+    }
+  }
+
+  return matchingFiles.sort((a, b) =>
+    a.name.localeCompare(b.name, 'fr', { sensitivity: 'base', numeric: true })
+  )
+}
+
 function createWindow(): void {
   const window = new BrowserWindow({
     width: 1440,
@@ -585,6 +687,7 @@ ipcMain.handle('workspace:select', async () => {
   })
   if (result.canceled || result.filePaths.length === 0) return null
   workspaceRoot = result.filePaths[0]
+  markdownSearchIndex.clear()
   lastWorkspaceDirectory = '.'
   await persistWorkspacePreferences()
   return { path: workspaceRoot, name: path.basename(workspaceRoot) }
@@ -849,6 +952,7 @@ ipcMain.handle('workspace:write-external', async (_event, filePath: string, cont
     throw new Error('Le chemin demandé ne correspond pas à un fichier.')
   }
   await writeFile(filePath, content, 'utf8')
+  markdownSearchIndex.delete(filePath)
 })
 
 ipcMain.handle('workspace:restore', async () => {
@@ -908,6 +1012,11 @@ ipcMain.handle('workspace:list', async (_event, directory = '.') => {
     .sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base', numeric: true }))
 })
 
+ipcMain.handle('workspace:search', (_event, directory: string, query: string) => {
+  const generation = ++workspaceSearchGeneration
+  return searchWorkspace(directory, query, () => generation !== workspaceSearchGeneration)
+})
+
 ipcMain.handle('workspace:read', async (_event, filePath: string) => {
   const resolvedFile = resolveInsideWorkspace(filePath)
   if (path.extname(resolvedFile).toLowerCase() !== '.md') {
@@ -924,6 +1033,7 @@ ipcMain.handle('workspace:write', async (_event, filePath: string, content: stri
     throw new Error('Seuls les fichiers Markdown (.md) peuvent être enregistrés.')
   }
   await writeFile(resolvedFile, content, 'utf8')
+  markdownSearchIndex.delete(resolvedFile)
 })
 
 ipcMain.handle(

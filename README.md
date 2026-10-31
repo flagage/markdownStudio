@@ -18,6 +18,7 @@ npm run dev
 - Open a `.md` file directly from the File menu or by dragging it into the application.
 - Open `.md` files from the desktop by associating them with Markdown Studio.
 - Browse files and folders sorted alphabetically.
+- Search whole words in Markdown notes recursively from the current folder. In an open note, use `Ctrl+F` / `Cmd+F` to search and navigate occurrences; use `Ctrl+Shift+F` / `Cmd+Shift+F` to focus the workspace search.
 - Move files and folders by dragging and dropping, or by clicking “Move” and then the destination.
 - Rename a file or folder from its context menu (right-click).
 - Keep multiple notes open in tabs and view two documents side by side.

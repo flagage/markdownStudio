@@ -3,6 +3,14 @@ import MarkdownEditor from './MarkdownEditor'
 
 type Theme = 'light' | 'dark'
 
+interface PageFindRequest {
+  query: string
+  direction: 'previous' | 'next'
+  focusEditor: boolean
+  advance: boolean
+  sequence: number
+}
+
 interface OpenDocument {
   path: string
   content: string
@@ -58,6 +66,17 @@ function getWorkspaceFilePath(workspacePath: string, filePath: string): string {
   return `${workspacePath.replace(/[\\/]+$/, '')}${separator}${filePath}`
 }
 
+function countExactWordMatches(text: string, query: string): number {
+  const normalizedQuery = query.trim()
+  if (!normalizedQuery) return 0
+  const escapedQuery = normalizedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const pattern = new RegExp(
+    `(^|[^\\p{L}\\p{N}\\p{M}_])(${escapedQuery})(?=$|[^\\p{L}\\p{N}\\p{M}_])`,
+    'giu'
+  )
+  return Array.from(text.matchAll(pattern)).length
+}
+
 export default function App() {
   const [theme, setTheme] = useState<Theme>(() => {
     const savedTheme = window.localStorage.getItem('markdown-studio-theme')
@@ -67,6 +86,12 @@ export default function App() {
   const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null)
   const [directory, setDirectory] = useState('.')
   const [entries, setEntries] = useState<WorkspaceEntry[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [pageSearchQuery, setPageSearchQuery] = useState('')
+  const [pageFindRequest, setPageFindRequest] = useState<PageFindRequest | null>(null)
+  const [searchResults, setSearchResults] = useState<WorkspaceEntry[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
   const [documents, setDocuments] = useState<OpenDocument[]>([])
   const [activePath, setActivePath] = useState<string | null>(null)
   const [splitView, setSplitView] = useState(false)
@@ -110,8 +135,14 @@ export default function App() {
   const openDroppedMarkdownFileRef = useRef<(filePath: string) => Promise<void>>(
     async () => {}
   )
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const pageSearchInputRef = useRef<HTMLInputElement>(null)
   documentsRef.current = documents
   const activeDocument = documents.find((document) => document.path === activePath) ?? null
+  const pageSearchMatchCount = useMemo(
+    () => activeDocument ? countExactWordMatches(activeDocument.content, pageSearchQuery) : 0,
+    [activeDocument?.content, pageSearchQuery]
+  )
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = theme
     window.localStorage.setItem('markdown-studio-theme', theme)
@@ -153,6 +184,75 @@ export default function App() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const query = searchQuery.trim()
+    if (!workspace || !query) {
+      setSearchResults([])
+      setSearchLoading(false)
+      setSearchError(null)
+      return
+    }
+
+    setSearchResults([])
+    setSearchLoading(true)
+    setSearchError(null)
+    const timeout = window.setTimeout(() => {
+      void window.workspace.search(directory, query).then((results) => {
+        if (cancelled) return
+        setSearchResults(results)
+        setSearchLoading(false)
+      }).catch((reason: unknown) => {
+        if (cancelled) return
+        setSearchError(reason instanceof Error ? reason.message : String(reason))
+        setSearchLoading(false)
+      })
+    }, 180)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeout)
+    }
+  }, [directory, searchQuery, workspace?.path])
+
+  useEffect(() => {
+    const onSearchShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'f') return
+      if (event.shiftKey) {
+        event.preventDefault()
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
+        return
+      }
+      event.preventDefault()
+      if (activeDocument) {
+        pageSearchInputRef.current?.focus()
+        pageSearchInputRef.current?.select()
+      } else {
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
+      }
+    }
+    window.addEventListener('keydown', onSearchShortcut)
+    return () => window.removeEventListener('keydown', onSearchShortcut)
+  }, [activeDocument])
+
+  function updatePageSearch(
+    query: string,
+    direction: 'previous' | 'next' = 'next',
+    focusEditor = false,
+    advance = false
+  ) {
+    setPageSearchQuery(query)
+    setPageFindRequest((current) => ({
+      query: query.trim(),
+      direction,
+      focusEditor,
+      advance,
+      sequence: (current?.sequence ?? 0) + 1
+    }))
+  }
 
   useEffect(() => window.workspace.onOpenFile(() => openMarkdownFileRef.current()), [])
   useEffect(() => window.workspace.onExportDocument((format) => {
@@ -838,6 +938,12 @@ export default function App() {
             key={document.path}
             value={document.content}
             onChange={(content) => updateDocument(document.path, content)}
+            findRequest={activePath === document.path ? pageFindRequest : null}
+            findQuery={pageSearchQuery}
+            findInputRef={activePath === document.path ? pageSearchInputRef : null}
+            findMatchCount={activePath === document.path ? pageSearchMatchCount : 0}
+            onFindQueryChange={(query) => updatePageSearch(query)}
+            onFindNext={(direction) => updatePageSearch(pageSearchQuery, direction, true, true)}
             documentPath={document.external || !workspace
               ? document.path
               : getWorkspaceFilePath(workspace.path, document.path)}
@@ -954,6 +1060,33 @@ export default function App() {
                   if (moveMode && draggedEntry) void moveEntry(draggedEntry, '.')
                 }}
               >▾ &nbsp;{workspace.name}</div>
+              <div className="workspace-search">
+                <div className="workspace-search-input">
+                  <span aria-hidden="true">⌕</span>
+                  <input
+                    ref={searchInputRef}
+                    type="search"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="Rechercher dans les notes…"
+                    aria-label="Rechercher dans les notes du dossier"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <kbd>Ctrl+⇧F</kbd>
+                </div>
+                {searchQuery.trim() && (
+                  <p className="search-status" aria-live="polite">
+                    {searchLoading
+                      ? 'Recherche…'
+                      : searchError
+                        ? searchError
+                        : `${searchResults.length} fichier${searchResults.length === 1 ? '' : 's'} trouvé${
+                            searchResults.length === 1 ? '' : 's'
+                          }`}
+                  </p>
+                )}
+              </div>
               <div className="file-actions">
                 <button onClick={() => openCreateEntry('file')}>+ Fichier</button>
                 <button onClick={() => openCreateEntry('directory')}>+ Dossier</button>
@@ -974,7 +1107,7 @@ export default function App() {
                 </p>
               )}
               <div className="file-list">
-                {parentDirectory && (
+                {!searchQuery.trim() && parentDirectory && (
                   <button
                     className={`file-entry directory-entry ${dropTarget === parentDirectory ? 'drop-target' : ''}`}
                     onClick={() => {
@@ -993,7 +1126,7 @@ export default function App() {
                     <span>↰</span> ..
                   </button>
                 )}
-                {entries.map((entry) => (
+                {(searchQuery.trim() ? searchResults : entries).map((entry) => (
                   <button
                     className={`file-entry ${entry.kind === 'directory' ? 'directory-entry' : ''} ${
                       !moveMode && activePath === entry.path ? 'selected' : ''
@@ -1026,10 +1159,16 @@ export default function App() {
                     title={entry.path}
                   >
                     <span>{entry.kind === 'directory' ? '▸' : '▤'}</span>
-                    {entry.name}
+                    <span className="file-entry-name">{entry.name}</span>
+                    {searchQuery.trim() && (
+                      <span className="search-result-path">{entry.path}</span>
+                    )}
                   </button>
                 ))}
-                {entries.length === 0 && <p className="empty-folder">Dossier vide</p>}
+                {searchQuery.trim()
+                  ? !searchLoading && !searchError && searchResults.length === 0 &&
+                    <p className="empty-folder">Aucun fichier trouvé</p>
+                  : entries.length === 0 && <p className="empty-folder">Dossier vide</p>}
               </div>
             </>
           ) : (
