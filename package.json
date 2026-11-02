@@ -15,8 +15,8 @@
     "dev": "electron-vite dev",
     "build": "tsc --noEmit && electron-vite build",
     "preview": "electron-vite preview",
-    "dist:linux": "npm run build && electron-builder --linux AppImage deb --x64",
-    "dist:win": "npm run build && electron-builder --win nsis --x64"
+    "dist:linux": "npm run build && electron-builder --linux AppImage deb --x64 --publish never",
+    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never"
   },
   "dependencies": {
     "@tiptap/extension-code-block": "^3.32.0",
