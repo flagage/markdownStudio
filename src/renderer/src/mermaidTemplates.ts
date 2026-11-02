@@ -413,17 +413,17 @@ const syntaxHelp: Record<string, MermaidSyntaxHelp> = {
   },
   usecase: {
     label: 'Cas d’utilisation',
-    syntax: 'Commence par `usecase-beta`. Déclare les acteurs avec `actor`, les cas avec `(Nom)`, puis relie-les.',
+    syntax: 'Commence par `usecase-beta`. Déclare les acteurs avec `actor`, les cas avec `identifiant(Nom)`, puis relie-les.',
     sections: [
       {
         heading: 'Acteurs et cas',
-        body: '`actor Identifiant as Libellé` déclare un acteur. Un cas d’utilisation se représente par `(Libellé)` ; relie acteur et cas avec `-->`.',
-        example: 'usecase-beta\\n  actor Client\\n  actor Admin\\n  Client --> (Créer un compte)\\n  Client --> (Passer commande)'
+        body: '`actor Client` déclare un acteur ; `actor admin(Administrateur)` lui donne un libellé. Un cas d’utilisation s’écrit `identifiant(Libellé)` ou `"Libellé"` ; relie acteur et cas avec `-->`, puis réutilise l’identifiant seul pour désigner le même cas.',
+        example: 'usecase-beta\\n  actor Client\\n  actor Admin\\n  Client --> compte(Créer un compte)\\n  Client --> commande(Passer commande)'
       },
       {
         heading: 'Relations et orientation',
-        body: 'Relie les acteurs aux cas avec `-->`. Les cas peuvent être reliés par une dépendance `..>` et un libellé tel que `<<include>>` ou `<<extend>>`. `direction TD`, `TB`, `BT`, `LR` ou `RL` choisit l’orientation du diagramme.',
-        example: 'usecase-beta\\n  direction LR\\n  actor Client\\n  Client --> (Passer commande)\\n  (Passer commande) ..> (Payer) : <<include>>'
+        body: 'Relie les acteurs aux cas avec `-->`. Les cas peuvent être reliés par une dépendance `..> : include` ou `..> : extend`. `direction TD`, `TB`, `BT`, `LR` ou `RL` choisit l’orientation du diagramme.',
+        example: 'usecase-beta\\n  direction LR\\n  actor Client\\n  Client --> commande(Passer commande)\\n  commande ..> : include paiement(Payer)'
       }
     ]
   },
@@ -477,11 +477,11 @@ const syntaxHelp: Record<string, MermaidSyntaxHelp> = {
       {
         heading: 'Format des flux',
         body: 'Chaque ligne contient exactement trois champs séparés par des virgules : source, cible et valeur numérique positive. Les noms de source et de cible deviennent des nœuds ; réutilise la même orthographe pour relier les flux.',
-        example: 'sankey-beta\\n  Revenu,Logement,40\\n  Revenu,Épargne,30\\n  Revenu,Loisirs,20\\n  Épargne,Investissement,15'
+        example: 'sankey-beta\\n  Revenu,Logement,40\\n  Revenu,Placements,30\\n  Revenu,Loisirs,20\\n  Placements,Actions,15'
       },
       {
         heading: 'Libellés et cohérence',
-        body: 'Le premier mot-clé est `sankey-beta`. Les lignes ne sont pas un tableau Markdown : n’ajoute pas d’en-tête CSV ni de commentaire final. Les valeurs représentent les quantités relatives et contrôlent l’épaisseur des liens.'
+        body: 'Le premier mot-clé est `sankey-beta`. Les lignes ne sont pas un tableau Markdown : n’ajoute pas d’en-tête CSV ni de commentaire final. Les valeurs représentent les quantités relatives et contrôlent l’épaisseur des liens. Écris les noms sans accents : le diagramme de Sankey de Mermaid les refuse, même entre guillemets.'
       }
     ]
   },
@@ -492,16 +492,16 @@ const syntaxHelp: Record<string, MermaidSyntaxHelp> = {
       {
         heading: 'Axes',
         body: '`xychart-beta` ouvre le graphique. `x-axis [A, B, C]` définit les catégories ; `x-axis Début --> Fin` définit une échelle continue. `y-axis "Nom" min --> max` configure le domaine vertical.',
-        example: 'xychart-beta\\n  title "Ventes mensuelles"\\n  x-axis [Jan, Fév, Mar, Avr]\\n  y-axis "Ventes" 0 --> 100'
+        example: 'xychart-beta\\n  title "Ventes mensuelles"\\n  x-axis [Jan, "Fév", Mar, Avr]\\n  y-axis "Ventes" 0 --> 100'
       },
       {
         heading: 'Séries et données',
         body: '`bar [nombres]` ajoute des barres ; `line [nombres]` ajoute une courbe. Chaque série doit fournir une valeur par catégorie de l’axe X. Tu peux déclarer plusieurs séries.',
-        example: 'xychart-beta\\n  x-axis [Jan, Fév, Mar]\\n  y-axis "Ventes" 0 --> 100\\n  bar [35, 55, 45]\\n  line [25, 45, 60]'
+        example: 'xychart-beta\\n  x-axis [Jan, "Fév", Mar]\\n  y-axis "Ventes" 0 --> 100\\n  bar [35, 55, 45]\\n  line [25, 45, 60]'
       },
       {
         heading: 'Options de présentation',
-        body: '`title "Texte"` ajoute un titre. `x-axis` et `y-axis` peuvent recevoir des libellés entre guillemets ; les bornes min et max du y doivent encadrer les données.'
+        body: '`title "Texte"` ajoute un titre. `x-axis` et `y-axis` peuvent recevoir des libellés entre guillemets ; les bornes min et max du y doivent encadrer les données. Mets entre guillemets les catégories qui contiennent des accents, comme `"Fév"`.'
       }
     ]
   },
@@ -845,7 +845,7 @@ export const mermaidTemplates: MermaidTemplate[] = [
     id: 'usecase',
     label: 'Cas d’utilisation',
     category: 'Architecture et données',
-    code: 'usecase-beta\n  actor Client\n  actor Admin\n  Client --> (Creer un compte)\n  Client --> (Passer commande)\n  Admin --> (Gerer le catalogue)'
+    code: 'usecase-beta\n  actor Client\n  actor Admin\n  Client --> compte(Créer un compte)\n  Client --> commande(Passer commande)\n  Admin --> catalogue(Gérer le catalogue)'
   },
   {
     id: 'info',
@@ -869,13 +869,13 @@ export const mermaidTemplates: MermaidTemplate[] = [
     id: 'sankey',
     label: 'Diagramme de Sankey',
     category: 'Graphiques',
-    code: 'sankey-beta\n  Revenu,Logement,40\n  Revenu,Épargne,30\n  Revenu,Loisirs,20\n  Revenu,Autre,10'
+    code: 'sankey-beta\n  Revenu,Logement,40\n  Revenu,Placements,30\n  Revenu,Loisirs,20\n  Revenu,Autre,10'
   },
   {
     id: 'xychart',
     label: 'Graphique XY',
     category: 'Graphiques',
-    code: 'xychart-beta\n  title "Ventes mensuelles"\n  x-axis [Jan, Fév, Mar, Avr]\n  y-axis "Ventes" 0 --> 100\n  bar [35, 55, 45, 80]\n  line [25, 45, 60, 75]'
+    code: 'xychart-beta\n  title "Ventes mensuelles"\n  x-axis [Jan, "Fév", Mar, Avr]\n  y-axis "Ventes" 0 --> 100\n  bar [35, 55, 45, 80]\n  line [25, 45, 60, 75]'
   },
   {
     id: 'radar',
