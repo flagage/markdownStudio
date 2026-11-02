@@ -37,7 +37,8 @@ interface Window {
     exportDocument: (
       format: 'pdf' | 'docx' | 'eml',
       markdown: string,
-      markdownPath: string
+      markdownPath: string,
+      diagrams: import('../../shared/exportDiagrams').ExportDiagram[]
     ) => Promise<string | null>
     onExportDocument: (callback: (format: 'pdf' | 'docx' | 'eml') => void) => () => void
     onWordPressSettings: (callback: () => void) => () => void
@@ -50,7 +51,8 @@ interface Window {
     ) => Promise<WordPressSettingsSummary>
     publishWordPressDraft: (
       markdown: string,
-      markdownPath: string
+      markdownPath: string,
+      diagrams: import('../../shared/exportDiagrams').ExportDiagram[]
     ) => Promise<{ title: string; url: string }>
     takePendingFiles: () => Promise<string[]>
     onFilesOpened: (callback: () => void) => () => void

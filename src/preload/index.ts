@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import type { ExportDiagram } from '../shared/exportDiagrams'
 
 contextBridge.exposeInMainWorld('workspace', {
   select: () => ipcRenderer.invoke('workspace:select'),
@@ -17,8 +18,14 @@ contextBridge.exposeInMainWorld('workspace', {
     ipcRenderer.on('menu:print-document', listener)
     return () => ipcRenderer.removeListener('menu:print-document', listener)
   },
-  exportDocument: (format: 'pdf' | 'docx' | 'eml', markdown: string, markdownPath: string) =>
-    ipcRenderer.invoke('document:export', format, markdown, markdownPath) as Promise<string | null>,
+  exportDocument: (
+    format: 'pdf' | 'docx' | 'eml',
+    markdown: string,
+    markdownPath: string,
+    diagrams: ExportDiagram[]
+  ) =>
+    ipcRenderer.invoke('document:export', format, markdown, markdownPath, diagrams) as
+      Promise<string | null>,
   onExportDocument: (callback: (format: 'pdf' | 'docx' | 'eml') => void) => {
     const listener = (_event: Electron.IpcRendererEvent, format: 'pdf' | 'docx' | 'eml') => callback(format)
     ipcRenderer.on('menu:export-document', listener)
@@ -39,8 +46,8 @@ contextBridge.exposeInMainWorld('workspace', {
   saveWordPressSettings: (siteUrl: string, username: string, password: string) =>
     ipcRenderer.invoke('wordpress:save-settings', siteUrl, username, password) as
       Promise<WordPressSettingsSummary>,
-  publishWordPressDraft: (markdown: string, markdownPath: string) =>
-    ipcRenderer.invoke('wordpress:publish-draft', markdown, markdownPath) as
+  publishWordPressDraft: (markdown: string, markdownPath: string, diagrams: ExportDiagram[]) =>
+    ipcRenderer.invoke('wordpress:publish-draft', markdown, markdownPath, diagrams) as
       Promise<{ title: string; url: string }>,
   takePendingFiles: () => ipcRenderer.invoke('workspace:take-pending-files') as Promise<string[]>,
   onFilesOpened: (callback: () => void) => {

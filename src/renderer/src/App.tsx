@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import MarkdownEditor from './MarkdownEditor'
 import LogoMark from './LogoMark'
+import { renderMermaidDiagramsForExport } from './mermaidExport'
 
 type Theme = 'light' | 'dark'
 
@@ -66,6 +67,12 @@ function getFileUrl(filePath: string): string {
     /^[a-zA-Z]:$/.test(part) ? part : encodeURIComponent(part)
   ).join('/')
   return `${normalizedPath.startsWith('/') ? 'file://' : 'file:///'}${encodedPath}`
+}
+
+function getUnrenderedDiagramsMessage(count: number): string {
+  return count === 1
+    ? 'Un diagramme Mermaid n’a pas pu être converti en image : il apparaît sous forme de code.'
+    : `${count} diagrammes Mermaid n’ont pas pu être convertis en image : ils apparaissent sous forme de code.`
 }
 
 function getWorkspaceFilePath(workspacePath: string, filePath: string): string {
@@ -510,8 +517,14 @@ export default function App() {
         setError('Le dossier de travail du document est introuvable.')
         return
       }
-      await window.workspace.exportDocument(format, document.content, markdownPath)
-      setError(null)
+      const { diagrams, failedCount } = await renderMermaidDiagramsForExport(document.content)
+      const exportedPath = await window.workspace.exportDocument(
+        format,
+        document.content,
+        markdownPath,
+        diagrams
+      )
+      setError(exportedPath && failedCount > 0 ? getUnrenderedDiagramsMessage(failedCount) : null)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
     }
@@ -578,8 +591,13 @@ export default function App() {
     setPublishingWordpress(true)
     setWordpressSuccess(null)
     try {
-      const result = await window.workspace.publishWordPressDraft(document.content, markdownPath)
-      setError(null)
+      const { diagrams, failedCount } = await renderMermaidDiagramsForExport(document.content)
+      const result = await window.workspace.publishWordPressDraft(
+        document.content,
+        markdownPath,
+        diagrams
+      )
+      setError(failedCount > 0 ? getUnrenderedDiagramsMessage(failedCount) : null)
       setWordpressSuccess(result)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))

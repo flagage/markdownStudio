@@ -2,11 +2,13 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, safeStorage, 
 import { readdir, readFile, writeFile, mkdir, stat, lstat, rename, copyFile, rm } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { randomUUID } from 'node:crypto'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import HTMLtoDOCX from 'html-to-docx'
 import { marked } from 'marked'
 import { markedColumnsExtension } from '../shared/columnsMarkdown'
+import { createExportMarked, isMermaidCodeBlock, type ExportDiagram } from '../shared/exportDiagrams'
 
 marked.use(markedColumnsExtension)
 
@@ -81,6 +83,34 @@ function isUntrustedNetworkFileUrl(url: string): boolean {
   }
   const host = parsedUrl.hostname ? parsedUrl.hostname.toLowerCase() : getNetworkHost(pathname)
   return host !== null && !trustedNetworkHosts.has(host)
+}
+
+function readExportDiagrams(value: unknown): Map<string, ExportDiagram> {
+  if (!Array.isArray(value) || value.length > 500) {
+    throw new Error('Les diagrammes à exporter sont invalides.')
+  }
+  const diagrams = new Map<string, ExportDiagram>()
+  for (const diagram of value) {
+    if (!diagram || typeof diagram !== 'object' ||
+      typeof diagram.code !== 'string' || typeof diagram.image !== 'string' ||
+      typeof diagram.width !== 'number' || !Number.isFinite(diagram.width) || diagram.width <= 0 ||
+      !/^data:image\/png;base64,[A-Za-z\d+/]+=*$/.test(diagram.image)) {
+      throw new Error('Les diagrammes à exporter sont invalides.')
+    }
+    diagrams.set(diagram.code, diagram)
+  }
+  return diagrams
+}
+
+async function renderExportHtml(
+  markdown: string,
+  diagrams: Map<string, ExportDiagram>
+): Promise<string> {
+  return createExportMarked((token) => {
+    const diagram = isMermaidCodeBlock(token) ? diagrams.get(token.text) : undefined
+    if (!diagram) return false
+    return `<p><img src="${diagram.image}" alt="Diagramme" style="width:${Math.round(diagram.width)}px"></p>\n`
+  }).parse(markdown)
 }
 
 function queueMarkdownFile(filePath: string): void {
@@ -291,7 +321,24 @@ async function uploadWordPressImage(
   }
 
   const image = await readFile(resolvedImagePath)
-  const filename = path.basename(resolvedImagePath)
+  return uploadWordPressMedia(
+    apiBase,
+    username,
+    password,
+    path.basename(resolvedImagePath),
+    mimeType,
+    image
+  )
+}
+
+async function uploadWordPressMedia(
+  apiBase: string,
+  username: string,
+  password: string,
+  filename: string,
+  mimeType: string,
+  image: Buffer<ArrayBuffer>
+): Promise<string> {
   const response = await wordPressRequest(`${apiBase}/media`, username, password, {
     method: 'POST',
     headers: {
@@ -317,6 +364,7 @@ async function uploadLocalWordPressImages(
 ): Promise<string> {
   const imageTagPattern = /<img\b[^>]*\bsrc=(["'])(.*?)\1[^>]*>/gi
   const uploadedImages = new Map<string, string>()
+  let uploadedDiagramCount = 0
   let result = ''
   let previousIndex = 0
 
@@ -325,7 +373,26 @@ async function uploadLocalWordPressImages(
     const source = decodeHtmlEntities(match[2])
     let outputTag = imageTag
     const isFileUrl = source.startsWith('file://')
-    if (isFileUrl || !/^(?:[a-z][a-z\d+.-]*:|\/)/i.test(source)) {
+    if (source.startsWith('data:image/png;base64,')) {
+      let uploadedUrl = uploadedImages.get(source)
+      if (!uploadedUrl) {
+        uploadedDiagramCount += 1
+        uploadedUrl = await uploadWordPressMedia(
+          apiBase,
+          username,
+          password,
+          `diagramme-${uploadedDiagramCount}.png`,
+          'image/png',
+          Buffer.from(source.slice(source.indexOf(',') + 1), 'base64')
+        )
+        uploadedImages.set(source, uploadedUrl)
+      }
+      const escapedUploadedUrl = uploadedUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+      outputTag = imageTag.replace(
+        `src=${match[1]}${match[2]}${match[1]}`,
+        `src=${match[1]}${escapedUploadedUrl}${match[1]}`
+      )
+    } else if (isFileUrl || !/^(?:[a-z][a-z\d+.-]*:|\/)/i.test(source)) {
       let imagePath: string
       try {
         imagePath = isFileUrl
@@ -356,17 +423,19 @@ async function uploadLocalWordPressImages(
 
 async function publishWordPressDraft(
   markdown: string,
-  markdownPath: string
+  markdownPath: string,
+  exportDiagrams: unknown
 ): Promise<{ title: string; url: string }> {
   if (typeof markdown !== 'string' || typeof markdownPath !== 'string' ||
     !path.isAbsolute(markdownPath) || path.extname(markdownPath).toLowerCase() !== '.md') {
     throw new Error('Les informations du document Markdown sont invalides.')
   }
+  const diagrams = readExportDiagrams(exportDiagrams)
   const settings = await readWordPressSettings()
   if (!settings) throw new Error('Configure d’abord la connexion à WordPress dans le menu Fichier.')
   const password = await getWordPressPassword(settings)
   const apiBase = getWordPressApiBase(settings.siteUrl)
-  const html = await marked.parse(markdown, { gfm: true })
+  const html = await renderExportHtml(markdown, diagrams)
   const titleMatch = html.match(/<h1(?:\s[^>]*)?>([\s\S]*?)<\/h1>/i)
   const title = titleMatch
     ? decodeHtmlEntities(titleMatch[1].replace(/<[^>]*>/g, '').trim())
@@ -796,8 +865,8 @@ ipcMain.handle(
 )
 ipcMain.handle(
   'wordpress:publish-draft',
-  (_event, markdown: string, markdownPath: string) =>
-    publishWordPressDraft(markdown, markdownPath)
+  (_event, markdown: string, markdownPath: string, diagrams: unknown) =>
+    publishWordPressDraft(markdown, markdownPath, diagrams)
 )
 
 async function embedLocalImages(
@@ -973,13 +1042,15 @@ ipcMain.handle(
     event,
     format: 'pdf' | 'docx' | 'eml',
     markdown: string,
-    markdownPath: string
+    markdownPath: string,
+    exportDiagrams: unknown
   ) => {
     if ((format !== 'pdf' && format !== 'docx' && format !== 'eml') || typeof markdown !== 'string' ||
       typeof markdownPath !== 'string' || !path.isAbsolute(markdownPath) ||
       path.extname(markdownPath).toLowerCase() !== '.md') {
       throw new Error('Les informations du document à exporter sont invalides.')
     }
+    const diagrams = readExportDiagrams(exportDiagrams)
 
     const title = path.basename(markdownPath, path.extname(markdownPath))
     const formatLabel = format === 'pdf'
@@ -1000,7 +1071,7 @@ ipcMain.handle(
       : await dialog.showSaveDialog(saveDialogOptions)
     if (result.canceled || !result.filePath) return null
 
-    const renderedMarkdown = await marked.parse(markdown, { gfm: true })
+    const renderedMarkdown = await renderExportHtml(markdown, diagrams)
     const htmlWithImages = await embedLocalImages(renderedMarkdown, markdownPath, format === 'eml')
     if (format === 'eml') {
       await writeFile(result.filePath, createEmailMessage(title, htmlWithImages), 'utf8')
@@ -1030,8 +1101,12 @@ ipcMain.handle(
         javascript: false
       }
     })
+    // Un fichier temporaire plutôt qu’une URL data: : Chromium limite la taille des URL
+    // à 2 Mo, ce que dépassent vite les images et diagrammes intégrés.
+    const htmlPath = path.join(tmpdir(), `markdown-studio-export-${randomUUID()}.html`)
     try {
-      await exportWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+      await writeFile(htmlPath, html, 'utf8')
+      await exportWindow.loadFile(htmlPath)
       const pdf = await exportWindow.webContents.printToPDF({
         pageSize: 'A4',
         printBackground: true
@@ -1039,6 +1114,7 @@ ipcMain.handle(
       await writeFile(result.filePath, pdf)
     } finally {
       exportWindow.close()
+      await rm(htmlPath, { force: true })
     }
     return result.filePath
   }
