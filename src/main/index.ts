@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, safeStorage, shell } from 'electron'
 import { readdir, readFile, writeFile, mkdir, stat, lstat, rename, copyFile, rm } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { randomUUID } from 'node:crypto'
@@ -39,6 +39,48 @@ const imageMimeTypes: Record<string, string> = {
   '.jpg': 'image/jpeg',
   '.png': 'image/png',
   '.webp': 'image/webp'
+}
+const externalUrlProtocols = new Set(['http:', 'https:', 'mailto:'])
+// Serveurs de partages réseau (UNC) choisis par l’utilisateur : y accéder envoie
+// ses identifiants Windows (NTLM), donc un document ne doit pas pouvoir en imposer un autre.
+const trustedNetworkHosts = new Set<string>()
+
+function openExternalUrl(url: string): void {
+  let protocol: string
+  try {
+    protocol = new URL(url).protocol
+  } catch {
+    return
+  }
+  if (externalUrlProtocols.has(protocol)) void shell.openExternal(url)
+}
+
+function getNetworkHost(filePath: string): string | null {
+  const match = /^[\\/]{2,}(?:[?.][\\/]UNC[\\/]+)?([^\\/]+)/i.exec(filePath)
+  return match ? match[1].toLowerCase() : null
+}
+
+function trustNetworkLocation(filePath: string): void {
+  const host = getNetworkHost(filePath)
+  if (host) trustedNetworkHosts.add(host)
+}
+
+function isUntrustedNetworkPath(filePath: string): boolean {
+  const host = getNetworkHost(filePath)
+  return host !== null && !trustedNetworkHosts.has(host)
+}
+
+function isUntrustedNetworkFileUrl(url: string): boolean {
+  let parsedUrl: URL
+  let pathname: string
+  try {
+    parsedUrl = new URL(url)
+    pathname = decodeURIComponent(parsedUrl.pathname)
+  } catch {
+    return true
+  }
+  const host = parsedUrl.hostname ? parsedUrl.hostname.toLowerCase() : getNetworkHost(pathname)
+  return host !== null && !trustedNetworkHosts.has(host)
 }
 
 function queueMarkdownFile(filePath: string): void {
@@ -291,6 +333,9 @@ async function uploadLocalWordPressImages(
           : path.resolve(path.dirname(markdownPath), decodeURIComponent(source.split(/[?#]/, 1)[0]))
       } catch {
         throw new Error(`Le chemin de l’image « ${source} » est invalide.`)
+      }
+      if (isUntrustedNetworkPath(imagePath)) {
+        throw new Error(`L’image « ${source} » se trouve sur un partage réseau non autorisé.`)
       }
       let uploadedUrl = uploadedImages.get(imagePath)
       if (!uploadedUrl) {
@@ -684,6 +729,18 @@ function createWindow(): void {
     if (mainWindow === window) mainWindow = null
   })
 
+  // Les liens s’ouvrent dans le navigateur : aucune page distante ne doit tourner
+  // dans une fenêtre de l’application, ni prendre la place de l’interface (et du preload).
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    openExternalUrl(url)
+    return { action: 'deny' }
+  })
+  window.webContents.on('will-navigate', (event) => {
+    if (event.url.split('#', 1)[0] === window.webContents.getURL().split('#', 1)[0]) return
+    event.preventDefault()
+    openExternalUrl(event.url)
+  })
+
   refreshApplicationMenu(window)
 
   if (process.env.ELECTRON_RENDERER_URL) {
@@ -699,6 +756,7 @@ ipcMain.handle('workspace:select', async () => {
   })
   if (result.canceled || result.filePaths.length === 0) return null
   workspaceRoot = result.filePaths[0]
+  trustNetworkLocation(workspaceRoot)
   markdownSearchIndex.clear()
   lastWorkspaceDirectory = '.'
   await persistWorkspacePreferences()
@@ -714,6 +772,7 @@ async function readExternalMarkdownFile(filePath: string): Promise<{ path: strin
     throw new Error('Le chemin demandé ne correspond pas à un fichier.')
   }
   const content = await readFile(filePath, 'utf8')
+  trustNetworkLocation(filePath)
   await rememberRecentMarkdownFile(filePath)
   return { path: filePath, content }
 }
@@ -775,6 +834,9 @@ async function embedLocalImages(
 
     let outputTag = imageTag
     if (imagePath) {
+      if (isUntrustedNetworkPath(imagePath)) {
+        throw new Error(`L’image « ${src} » se trouve sur un partage réseau non autorisé.`)
+      }
       const mimeType = imageMimeTypes[path.extname(imagePath).toLowerCase()]
       if (!mimeType) {
         if (rejectUnsupportedFormats) {
@@ -1087,6 +1149,7 @@ ipcMain.handle('workspace:restore', async () => {
     throw new Error('Le dernier dossier de travail n’est pas un dossier valide.')
   }
   workspaceRoot = preferences.path
+  trustNetworkLocation(workspaceRoot)
   lastWorkspaceDirectory = '.'
   try {
     const restoredDirectory = resolveInsideWorkspace(preferences.directory)
@@ -1319,6 +1382,11 @@ if (!hasSingleInstanceLock) {
   })
 
   app.whenReady().then(() => {
+    // Bloque les images, diagrammes, etc. qui pointent vers un partage réseau imposé par un document.
+    protocol.handle('file', (request) => {
+      if (isUntrustedNetworkFileUrl(request.url)) return new Response(null, { status: 403 })
+      return net.fetch(request, { bypassCustomProtocolHandlers: true })
+    })
     queueMarkdownFileFromArguments(process.argv.slice(1))
     loadRecentMarkdownFiles().catch((reason: unknown) => {
       console.error('Impossible de charger les fichiers récents :', reason)
