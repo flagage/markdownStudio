@@ -393,6 +393,13 @@ function normalizeAtxHeadingSpacing(markdown: string): string {
   }).join('\n')
 }
 
+const pastedImageTypes = new Set(['image/gif', 'image/jpeg', 'image/png', 'image/webp'])
+
+function getPastedImage(event: ClipboardEvent | React.ClipboardEvent): File | null {
+  return Array.from(event.clipboardData?.files ?? [])
+    .find((file) => pastedImageTypes.has(file.type)) ?? null
+}
+
 export default function MarkdownEditor({
   value,
   onChange,
@@ -436,6 +443,20 @@ export default function MarkdownEditor({
   const [selectedMermaidTemplateId, setSelectedMermaidTemplateId] = useState('flowchart-v2')
   const [rawMarkdownMode, setRawMarkdownMode] = useState(false)
   const rawMarkdownEditorRef = useRef<HTMLTextAreaElement>(null)
+  // L’éditeur garde ses options du premier rendu : le collage lit le document courant ici.
+  const pasteTargetRef = useRef({ documentPath, external })
+  pasteTargetRef.current = { documentPath, external }
+
+  async function savePastedImage(file: File) {
+    const target = pasteTargetRef.current
+    return window.workspace.savePastedImage(
+      target.documentPath,
+      target.external,
+      file.type,
+      new Uint8Array(await file.arrayBuffer())
+    )
+  }
+
   const extensions = useMemo(
     () => [
       StarterKit.configure({ codeBlock: false, link: { markdownLinks: true } }),
@@ -465,6 +486,18 @@ export default function MarkdownEditor({
         class: 'tiptap-editor',
         spellcheck: 'true',
         'aria-label': 'Éditeur Markdown'
+      },
+      handlePaste: (view, event) => {
+        const file = getPastedImage(event)
+        if (!file) return false
+        void savePastedImage(file).then((image) => {
+          const node = view.state.schema.nodes.image?.create({ src: image.relativePath, alt: image.name })
+          if (node) view.dispatch(view.state.tr.replaceSelectionWith(node).scrollIntoView())
+          setImageError(null)
+        }).catch((reason: unknown) => {
+          setImageError(reason instanceof Error ? reason.message : String(reason))
+        })
+        return true
       }
     }
   }, [extensions])
@@ -780,6 +813,20 @@ export default function MarkdownEditor({
               spellCheck={false}
               value={value}
               onChange={(event) => onChange(event.target.value)}
+              onPaste={(event) => {
+                const file = getPastedImage(event)
+                if (!file) return
+                event.preventDefault()
+                const textarea = event.currentTarget
+                const { selectionStart, selectionEnd } = textarea
+                void savePastedImage(file).then((image) => {
+                  const markdown = `![${image.name}](${image.relativePath})`
+                  onChange(textarea.value.slice(0, selectionStart) + markdown + textarea.value.slice(selectionEnd))
+                  setImageError(null)
+                }).catch((reason: unknown) => {
+                  setImageError(reason instanceof Error ? reason.message : String(reason))
+                })
+              }}
             />
             <pre className="raw-markdown-print">{value}</pre>
           </>

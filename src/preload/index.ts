@@ -50,6 +50,11 @@ contextBridge.exposeInMainWorld('workspace', {
     ipcRenderer.invoke('wordpress:publish-draft', markdown, markdownPath, diagrams) as
       Promise<{ title: string; url: string }>,
   takePendingFiles: () => ipcRenderer.invoke('workspace:take-pending-files') as Promise<string[]>,
+  recentFiles: () => ipcRenderer.invoke('workspace:recent-files') as Promise<string[]>,
+  clearRecentFiles: () => ipcRenderer.invoke('workspace:clear-recent-files') as Promise<void>,
+  savePastedImage: (markdownPath: string, external: boolean, mimeType: string, data: Uint8Array) =>
+    ipcRenderer.invoke('workspace:save-pasted-image', markdownPath, external, mimeType, data) as
+      Promise<{ name: string; relativePath: string }>,
   onFilesOpened: (callback: () => void) => {
     const listener = () => callback()
     ipcRenderer.on('files:pending', listener)

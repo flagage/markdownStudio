@@ -786,6 +786,8 @@ function createWindow(): void {
     height: 900,
     minWidth: 900,
     minHeight: 600,
+    // Le menu de l’application remplace la barre de menus : Alt l’affiche, et ses raccourcis restent actifs.
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -856,6 +858,8 @@ ipcMain.handle('workspace:open-file', async () => {
 })
 
 ipcMain.handle('workspace:take-pending-files', () => pendingMarkdownFiles.splice(0))
+ipcMain.handle('workspace:recent-files', () => [...recentMarkdownFiles])
+ipcMain.handle('workspace:clear-recent-files', () => clearRecentMarkdownFiles())
 
 ipcMain.handle('wordpress:get-settings', () => getWordPressSettingsSummary())
 ipcMain.handle(
@@ -1124,22 +1128,68 @@ ipcMain.handle('workspace:open-dropped-file', async (_event, filePath: string) =
   return readExternalMarkdownFile(filePath)
 })
 
+async function resolveActiveMarkdownPath(markdownPath: unknown, external: unknown): Promise<string> {
+  if (typeof external !== 'boolean' || typeof markdownPath !== 'string') {
+    throw new Error('Le type du document Markdown est invalide.')
+  }
+  const resolvedMarkdownPath = external
+    ? markdownPath
+    : resolveInsideWorkspace(markdownPath)
+  if (!path.isAbsolute(resolvedMarkdownPath) ||
+    path.extname(resolvedMarkdownPath).toLowerCase() !== '.md') {
+    throw new Error('Le document actif n’est pas un fichier Markdown valide.')
+  }
+  if (!(await stat(resolvedMarkdownPath)).isFile()) {
+    throw new Error('Le document Markdown actif n’existe plus.')
+  }
+  return resolvedMarkdownPath
+}
+
+const pastedImageExtensions: Record<string, string> = {
+  'image/gif': '.gif',
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp'
+}
+
+ipcMain.handle(
+  'workspace:save-pasted-image',
+  async (_event, markdownPath: unknown, external: unknown, mimeType: unknown, data: unknown) => {
+    const resolvedMarkdownPath = await resolveActiveMarkdownPath(markdownPath, external)
+    const extension = typeof mimeType === 'string' ? pastedImageExtensions[mimeType] : undefined
+    if (!extension) throw new Error('Ce format d’image n’est pas pris en charge.')
+    if (!(data instanceof Uint8Array) || data.byteLength === 0) {
+      throw new Error('L’image collée est invalide.')
+    }
+    if (data.byteLength > 20 * 1024 * 1024) {
+      throw new Error('L’image dépasse la taille maximale de 20 Mo.')
+    }
+
+    const now = new Date()
+    const pad = (value: number) => String(value).padStart(2, '0')
+    const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${
+      pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+    const documentDirectory = path.dirname(resolvedMarkdownPath)
+    let copyNumber = 1
+    while (true) {
+      const name = copyNumber === 1
+        ? `image-${stamp}${extension}`
+        : `image-${stamp}-${copyNumber}${extension}`
+      try {
+        await writeFile(path.join(documentDirectory, name), data, { flag: 'wx' })
+        return { name, relativePath: encodeURIComponent(name) }
+      } catch (reason) {
+        if (!(reason instanceof Error && 'code' in reason && reason.code === 'EEXIST')) throw reason
+        copyNumber += 1
+      }
+    }
+  }
+)
+
 ipcMain.handle(
   'workspace:select-image',
   async (_event, markdownPath: string, external: boolean) => {
-    if (typeof external !== 'boolean') {
-      throw new Error('Le type du document Markdown est invalide.')
-    }
-    const resolvedMarkdownPath = external
-      ? markdownPath
-      : resolveInsideWorkspace(markdownPath)
-    if (!path.isAbsolute(resolvedMarkdownPath) ||
-      path.extname(resolvedMarkdownPath).toLowerCase() !== '.md') {
-      throw new Error('Le document actif n’est pas un fichier Markdown valide.')
-    }
-    if (!(await stat(resolvedMarkdownPath)).isFile()) {
-      throw new Error('Le document Markdown actif n’existe plus.')
-    }
+    const resolvedMarkdownPath = await resolveActiveMarkdownPath(markdownPath, external)
 
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],

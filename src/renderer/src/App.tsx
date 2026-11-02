@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import MarkdownEditor from './MarkdownEditor'
 import LogoMark from './LogoMark'
 import { renderMermaidDiagramsForExport } from './mermaidExport'
+import AppMenu from './AppMenu'
+import Icon from './Icons'
 
 type Theme = 'light' | 'dark'
 
@@ -1092,54 +1094,56 @@ export default function App() {
             </div>
           )}
         </div>
+        <AppMenu
+          hasWorkspace={Boolean(workspace)}
+          hasDocument={Boolean(activeDocument)}
+          moveMode={moveMode}
+          onNewFile={() => openCreateEntry('file')}
+          onNewFolder={() => openCreateEntry('directory')}
+          onOpenFile={() => void openMarkdownFile()}
+          onOpenFolder={() => void openWorkspace()}
+          onOpenRecent={(filePath) => void openDroppedMarkdownFileRef.current(filePath)}
+          onTemplates={openTemplateManager}
+          onToggleMoveMode={() => {
+            setMoveMode((current) => !current)
+            setDraggedEntry(null)
+          }}
+          onPrint={printDocument}
+          onExport={(format) => void exportDocument(format)}
+          onPublishWordPress={() => void publishWordpressDraft()}
+          onWordPressSettings={() => void openWordpressSettings()}
+        />
         <div className="document-title">
-          {activeDocument ? activeDocument.path.split(/[\\/]/).at(-1) : 'Aucun document ouvert'}
-          {activeDocument?.content !== activeDocument?.savedContent && <span className="unsaved"> • non enregistré</span>}
-        </div>
-        <div className="toolbar">
-          <div className="toolbar-group" role="group" aria-label="Espace de travail">
-            <button onClick={() => void openMarkdownFile()} title="Ouvrir un fichier Markdown">
-              <span aria-hidden="true">▤</span> Ouvrir fichier
-            </button>
-            <button onClick={() => void openWorkspace()} title="Ouvrir un dossier">
-              <span aria-hidden="true">▰</span> Dossier
-            </button>
-            {documents.length > 0 && (
+          {activeDocument ? (
+            <>
+              <Icon name="file" />
+              <span className="document-title-name">{activeDocument.path.split(/[\\/]/).at(-1)}</span>
               <button
-                className={splitView ? 'selected' : ''}
-                aria-pressed={splitView}
-                onClick={toggleSplitView}
-                title="Afficher deux documents côte à côte"
+                type="button"
+                className={`save-status ${activeDocument.content === activeDocument.savedContent ? 'saved' : 'pending'}`}
+                onClick={() => void saveFile()}
+                disabled={activeDocument.content === activeDocument.savedContent}
+                title="Enregistrer maintenant (Ctrl S)"
               >
-                <span aria-hidden="true">▥</span> {splitView ? 'Vue unique' : 'Côte à côte'}
+                {activeDocument.content === activeDocument.savedContent
+                  ? <><Icon name="check" /> Enregistré</>
+                  : <><span className="save-status-dot" aria-hidden="true" /> Enregistrement…</>}
               </button>
-            )}
-          </div>
-          <button
-            className="primary"
-            onClick={() => void saveFile()}
-            disabled={!activeDocument || activeDocument.content === activeDocument.savedContent}
-          >
-            <span aria-hidden="true">↓</span> Enregistrer <kbd>Ctrl S</kbd>
-          </button>
-          <button
-            onClick={printDocument}
-            disabled={!activeDocument}
-            title="Imprimer le document actif"
-          >
-            <span aria-hidden="true">▤</span> Imprimer
-          </button>
-          <button
-            className="theme-toggle"
-            onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')}
-            aria-label={`Activer le mode ${theme === 'dark' ? 'clair' : 'sombre'}`}
-            aria-pressed={theme === 'dark'}
-            title={`Activer le mode ${theme === 'dark' ? 'clair' : 'sombre'}`}
-          >
-            <span aria-hidden="true">{theme === 'dark' ? '☀' : '☾'}</span>
-            {theme === 'dark' ? 'Clair' : 'Sombre'}
-          </button>
+            </>
+          ) : (
+            <span className="document-title-name">Aucun document ouvert</span>
+          )}
         </div>
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')}
+          aria-label={`Activer le mode ${theme === 'dark' ? 'clair' : 'sombre'}`}
+          aria-pressed={theme === 'dark'}
+          title={`Activer le mode ${theme === 'dark' ? 'clair' : 'sombre'}`}
+        >
+          <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
+        </button>
       </header>
 
       <div className="workspace">
@@ -1160,20 +1164,23 @@ export default function App() {
               onClick={() => {
                 if (moveMode && draggedEntry) void moveEntry(draggedEntry, '.')
               }}
-            >EXPLORATEUR</span>
-            <button className="icon-button" onClick={openTemplateManager}>Modèles</button>
+              title={workspace?.path}
+            >
+              <Icon name="folder" />
+              <span className="sidebar-workspace-name">{workspace?.name ?? 'Explorateur'}</span>
+            </span>
           </div>
           {workspace ? (
             <>
               <div className="workspace-search">
                 <div className="workspace-search-input">
-                  <span aria-hidden="true">⌕</span>
+                  <Icon name="search" />
                   <input
                     ref={searchInputRef}
                     type="search"
                     value={searchQuery}
                     onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="Rechercher dans les notes…"
+                    placeholder="Rechercher…"
                     aria-label="Rechercher dans les notes du dossier"
                     autoComplete="off"
                     spellCheck={false}
@@ -1192,24 +1199,21 @@ export default function App() {
                   </p>
                 )}
               </div>
-              <div className="file-actions">
-                <button onClick={() => openCreateEntry('file')}>+ Fichier</button>
-                <button onClick={() => openCreateEntry('directory')}>+ Dossier</button>
-                <button
-                  className={moveMode ? 'selected' : ''}
-                  aria-pressed={moveMode}
-                  onClick={() => {
-                    setMoveMode((current) => !current)
-                    setDraggedEntry(null)
-                  }}
-                >{moveMode ? 'Annuler' : 'Déplacer'}</button>
-              </div>
               {moveMode && (
-                <p className="move-help">
-                  {draggedEntry
-                    ? `« ${draggedEntry.name} » : clique sur un dossier de destination.`
-                    : 'Clique sur le fichier ou dossier à déplacer.'}
-                </p>
+                <div className="move-help">
+                  <span>
+                    {draggedEntry
+                      ? `« ${draggedEntry.name} » : clique sur un dossier de destination.`
+                      : 'Clique sur le fichier ou dossier à déplacer.'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMoveMode(false)
+                      setDraggedEntry(null)
+                    }}
+                  >Terminer</button>
+                </div>
               )}
               <div className="file-list">
                 {!searchQuery.trim() && parentDirectory && (
@@ -1228,7 +1232,7 @@ export default function App() {
                     onDragLeave={() => setDropTarget(null)}
                     onDrop={(event) => handleDrop(event, parentDirectory)}
                   >
-                    <span>↰</span> ..
+                    <Icon name="parent" /> ..
                   </button>
                 )}
                 {(searchQuery.trim() ? searchResults : entries).map((entry) => (
@@ -1263,7 +1267,7 @@ export default function App() {
                     onContextMenu={(event) => showFileContextMenu(event, entry)}
                     title={entry.path}
                   >
-                    <span>{entry.kind === 'directory' ? '▸' : '▤'}</span>
+                    <Icon name={entry.kind === 'directory' ? 'folder' : 'file'} />
                     <span className="file-entry-name">{entry.name}</span>
                     {searchQuery.trim() && (
                       <span className="search-result-path">{entry.path}</span>
@@ -1278,8 +1282,7 @@ export default function App() {
             </>
           ) : (
             <div className="welcome-sidebar">
-              <p>Ouvre un dossier pour parcourir tes notes Markdown.</p>
-              <button className="primary" onClick={() => void openWorkspace()}>Choisir un dossier</button>
+              <p>Ouvre un dossier pour parcourir et organiser tes notes Markdown ici.</p>
             </div>
           )}
         </aside>
@@ -1304,10 +1307,22 @@ export default function App() {
                       >
                         {name}{modified && <span className="tab-dirty">●</span>}
                       </button>
-                      <button className="tab-close" title={`Fermer ${name}`} aria-label={`Fermer ${name}`} onClick={() => void closeDocument(document.path)}>×</button>
+                      <button className="tab-close" title={`Fermer ${name}`} aria-label={`Fermer ${name}`} onClick={() => void closeDocument(document.path)}>
+                        <Icon name="close" />
+                      </button>
                     </div>
                   )
                 })}
+                <button
+                  type="button"
+                  className={`split-toggle ${splitView ? 'selected' : ''}`}
+                  aria-pressed={splitView}
+                  onClick={toggleSplitView}
+                  title={splitView ? 'Revenir à un seul document' : 'Afficher deux documents côte à côte'}
+                >
+                  <Icon name="split" />
+                  {splitView ? 'Vue unique' : 'Côte à côte'}
+                </button>
               </div>
               <div className={`document-panes ${splitView ? 'two-document-panes' : ''}`}>
                 {splitView
@@ -1319,9 +1334,28 @@ export default function App() {
             <div className="empty-state">
               <LogoMark className="empty-icon" />
               <h1>Ton espace d’écriture</h1>
-              <p>Ouvre un dossier ou crée une note Markdown pour commencer.</p>
-              {!workspace && <button className="primary" onClick={() => void openWorkspace()}>Ouvrir un dossier</button>}
-              <p className="feature-hint">Markdown · aperçu en direct · diagrammes Mermaid</p>
+              <p>Écris directement dans le rendu final, puis exporte en PDF, Word ou e-mail.</p>
+              <div className="empty-actions">
+                {workspace ? (
+                  <button type="button" className="empty-action" onClick={() => openCreateEntry('file')}>
+                    <Icon name="filePlus" />
+                    <strong>Nouveau fichier</strong>
+                    <span>dans {workspace.name}</span>
+                  </button>
+                ) : (
+                  <button type="button" className="empty-action" onClick={() => void openWorkspace()}>
+                    <Icon name="folderOpen" />
+                    <strong>Ouvrir un dossier</strong>
+                    <span>pour parcourir tes notes</span>
+                  </button>
+                )}
+                <button type="button" className="empty-action" onClick={() => void openMarkdownFile()}>
+                  <Icon name="fileOpen" />
+                  <strong>Ouvrir un fichier</strong>
+                  <span>Markdown (.md)</span>
+                </button>
+              </div>
+              <p className="feature-hint">Édition visuelle · diagrammes Mermaid · colonnes · modèles</p>
             </div>
           )}
           {error && <div className="error-banner" role="alert">{error}</div>}

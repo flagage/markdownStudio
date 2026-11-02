@@ -55,6 +55,14 @@ interface Window {
       diagrams: import('../../shared/exportDiagrams').ExportDiagram[]
     ) => Promise<{ title: string; url: string }>
     takePendingFiles: () => Promise<string[]>
+    recentFiles: () => Promise<string[]>
+    clearRecentFiles: () => Promise<void>
+    savePastedImage: (
+      markdownPath: string,
+      external: boolean,
+      mimeType: string,
+      data: Uint8Array
+    ) => Promise<{ name: string; relativePath: string }>
     onFilesOpened: (callback: () => void) => () => void
     selectImage: (
       markdownPath: string,
