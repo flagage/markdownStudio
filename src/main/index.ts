@@ -1356,7 +1356,9 @@ ipcMain.handle(
       return
     }
     const filename = name.toLowerCase().endsWith('.md') ? name : `${name}.md`
-    await writeFile(path.join(parent, filename), content, { flag: 'wx' })
+    const filePath = path.join(parent, filename)
+    await writeFile(filePath, content, { flag: 'wx' })
+    return path.relative(workspaceRoot!, filePath)
   }
 )
 

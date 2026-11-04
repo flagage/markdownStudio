@@ -80,7 +80,7 @@ interface Window {
       name: string,
       kind: 'file' | 'directory',
       content?: string
-    ) => Promise<void>
+    ) => Promise<string | void>
     move: (sourcePath: string, destinationDirectory: string) => Promise<string>
     rename: (sourcePath: string, newName: string) => Promise<string>
     duplicate: (sourcePath: string) => Promise<string>

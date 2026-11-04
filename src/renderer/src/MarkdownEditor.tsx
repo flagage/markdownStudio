@@ -428,7 +428,9 @@ export default function MarkdownEditor({
   onFindNext,
   documentPath,
   external,
-  imageBaseUrl
+  imageBaseUrl,
+  autoFocus = false,
+  onAutoFocus
 }: {
   value: string
   onChange: (markdown: string) => void
@@ -447,6 +449,8 @@ export default function MarkdownEditor({
   documentPath: string
   external: boolean
   imageBaseUrl: string
+  autoFocus?: boolean
+  onAutoFocus?: () => void
 }) {
   const [contextMenu, setContextMenu] = useState<{
     x: number
@@ -523,6 +527,12 @@ export default function MarkdownEditor({
       }
     }
   }, [extensions])
+
+  useEffect(() => {
+    if (!editor || !autoFocus) return
+    editor.commands.focus('end')
+    onAutoFocus?.()
+  }, [autoFocus, editor])
 
   useEffect(() => {
     const parsedMarkdown = convertEmojiShortcodes(value)

@@ -117,6 +117,7 @@ export default function App() {
   const [searchError, setSearchError] = useState<string | null>(null)
   const [documents, setDocuments] = useState<OpenDocument[]>([])
   const [activePath, setActivePath] = useState<string | null>(null)
+  const [focusDocumentPath, setFocusDocumentPath] = useState<string | null>(null)
   const [splitView, setSplitView] = useState(false)
   const [splitPaths, setSplitPaths] = useState<[string | null, string | null]>([null, null])
   const [newEntryKind, setNewEntryKind] = useState<NewEntryKind | null>(null)
@@ -926,8 +927,20 @@ export default function App() {
       const templateContent = newEntryKind === 'file'
         ? templates.find((template) => template.id === selectedTemplateId)?.content ?? ''
         : ''
-      await window.workspace.create(directory, name, newEntryKind, templateContent)
+      const createdPath = await window.workspace.create(directory, name, newEntryKind, templateContent)
       await loadDirectory(directory)
+      if (newEntryKind === 'file' && createdPath) {
+        const previousPath = activePath
+        setDocuments((current) => [...current, {
+          path: createdPath,
+          content: templateContent,
+          savedContent: templateContent,
+          external: false
+        }])
+        setActivePath(createdPath)
+        setFocusDocumentPath(createdPath)
+        if (splitView) setSplitPaths([createdPath, previousPath])
+      }
       setNewEntryKind(null)
       setNewEntryName('')
     } catch (reason) {
@@ -1016,6 +1029,10 @@ export default function App() {
               ? document.path
               : getWorkspaceFilePath(workspace.path, document.path)}
             external={document.external}
+            autoFocus={focusDocumentPath === document.path}
+            onAutoFocus={() => setFocusDocumentPath((current) =>
+              current === document.path ? null : current
+            )}
             imageBaseUrl={new URL(
               '.',
               getFileUrl(document.external || !workspace
