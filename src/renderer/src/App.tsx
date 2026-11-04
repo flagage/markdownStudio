@@ -4,6 +4,7 @@ import LogoMark from './LogoMark'
 import { renderMermaidDiagramsForExport } from './mermaidExport'
 import AppMenu from './AppMenu'
 import Icon from './Icons'
+import MarkdownHelp from './MarkdownHelp'
 
 type Theme = 'light' | 'dark'
 
@@ -99,6 +100,7 @@ export default function App() {
     return isHexColor(savedColor) ? savedColor : defaultBrandColor
   })
   const [brandColorPickerOpen, setBrandColorPickerOpen] = useState(false)
+  const [markdownHelpOpen, setMarkdownHelpOpen] = useState(false)
   const [theme, setTheme] = useState<Theme>(() => {
     const savedTheme = window.localStorage.getItem('markdown-studio-theme')
     if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme
@@ -1102,6 +1104,7 @@ export default function App() {
           onNewFolder={() => openCreateEntry('directory')}
           onOpenFile={() => void openMarkdownFile()}
           onOpenFolder={() => void openWorkspace()}
+          onMarkdownHelp={() => setMarkdownHelpOpen(true)}
           onOpenRecent={(filePath) => void openDroppedMarkdownFileRef.current(filePath)}
           onTemplates={openTemplateManager}
           onToggleMoveMode={() => {
@@ -1693,6 +1696,7 @@ export default function App() {
           </form>
         </div>
       )}
+      {markdownHelpOpen && <MarkdownHelp onClose={() => setMarkdownHelpOpen(false)} />}
     </main>
   )
 }

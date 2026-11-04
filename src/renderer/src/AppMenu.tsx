@@ -9,6 +9,7 @@ interface AppMenuProps {
   onNewFolder: () => void
   onOpenFile: () => void
   onOpenFolder: () => void
+  onMarkdownHelp: () => void
   onOpenRecent: (filePath: string) => void
   onTemplates: () => void
   onToggleMoveMode: () => void
@@ -139,6 +140,12 @@ export default function AppMenu(props: AppMenuProps) {
               <div className="app-menu-heading">Document actif</div>
               {renderItems(documentItems)}
             </div>
+          </div>
+          <div className="app-menu-help">
+            <button type="button" role="menuitem" onClick={() => run(props.onMarkdownHelp)}>
+              <Icon name="help" />
+              <span className="app-menu-label">Aide Markdown</span>
+            </button>
           </div>
           <div className="app-menu-recent">
             <div className="app-menu-heading">

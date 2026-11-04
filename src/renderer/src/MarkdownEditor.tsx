@@ -14,6 +14,7 @@ import Image, { inputRegex as imageInputRegex } from '@tiptap/extension-image'
 import type { ImageOptions } from '@tiptap/extension-image'
 import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
+import { convertEmojiShortcodes, getEmojiShortcode } from './markdownEmoji'
 import MermaidDiagram from './MermaidDiagram'
 import { getMermaidSyntaxHelp, mermaidTemplates } from './mermaidTemplates'
 import { markdownColumnsTokenizer } from '../../shared/columnsMarkdown'
@@ -324,6 +325,22 @@ const MarkdownTaskItem = TaskItem.extend({
   }
 })
 
+const EmojiShortcodes = Extension.create({
+  name: 'emojiShortcodes',
+
+  addInputRules() {
+    return [new InputRule({
+      find: /(?<![\\\w:]):([a-z0-9_+-]+):$/i,
+      handler: ({ state, range, match }) => {
+        const $position = state.doc.resolve(range.from)
+        if ($position.parent.type.spec.code || $position.marks().some(({ type }) => type.name === 'code')) return
+        const emoji = getEmojiShortcode(match[1])
+        if (emoji) state.tr.insertText(emoji, range.from, range.to)
+      }
+    })]
+  }
+})
+
 const MarkdownImage = Image.extend<ImageOptions & { baseUrl: string }>({
   addOptions() {
     return {
@@ -459,7 +476,11 @@ export default function MarkdownEditor({
 
   const extensions = useMemo(
     () => [
-      StarterKit.configure({ codeBlock: false, link: { markdownLinks: true } }),
+      StarterKit.configure({
+        codeBlock: false,
+        heading: { levels: [1, 2, 3, 4, 5, 6] },
+        link: { markdownLinks: true }
+      }),
       MarkdownCodeBlock,
       MarkdownColumns,
       MarkdownColumn,
@@ -469,6 +490,7 @@ export default function MarkdownEditor({
       TableCell,
       TaskList,
       MarkdownTaskItem.configure({ nested: true, HTMLAttributes: { class: 'task-item' } }),
+      EmojiShortcodes,
       MarkdownImage.configure({ baseUrl: imageBaseUrl }),
       SearchHighlight,
       Markdown
@@ -478,7 +500,7 @@ export default function MarkdownEditor({
 
   const editor = useEditor({
     extensions,
-    content: normalizeCodeFenceIndentation(value),
+    content: normalizeCodeFenceIndentation(convertEmojiShortcodes(value)),
     contentType: 'markdown',
     onUpdate: ({ editor: currentEditor }) => onChange(currentEditor.getMarkdown()),
     editorProps: {
@@ -503,8 +525,9 @@ export default function MarkdownEditor({
   }, [extensions])
 
   useEffect(() => {
-    if (editor && !rawMarkdownMode && editor.getMarkdown() !== value) {
-      editor.commands.setContent(normalizeCodeFenceIndentation(value), {
+    const parsedMarkdown = convertEmojiShortcodes(value)
+    if (editor && !rawMarkdownMode && editor.getMarkdown() !== parsedMarkdown) {
+      editor.commands.setContent(normalizeCodeFenceIndentation(parsedMarkdown), {
         contentType: 'markdown',
         emitUpdate: false
       })
@@ -733,7 +756,7 @@ export default function MarkdownEditor({
 
     const markdown = normalizeAtxHeadingSpacing(value)
     if (markdown !== value) onChange(markdown)
-    editor.commands.setContent(normalizeCodeFenceIndentation(markdown), {
+    editor.commands.setContent(normalizeCodeFenceIndentation(convertEmojiShortcodes(markdown)), {
       contentType: 'markdown',
       emitUpdate: false
     })

@@ -30,6 +30,8 @@ npm run dev
 - Write directly in a formatted view, with a toolbar for headings, bold, italics, lists, quotes, and code blocks.
 - Insert PNG, JPEG, GIF, WebP, or BMP images from the editor toolbar; images are copied beside the Markdown document and referenced with a relative link, then displayed inline.
 - Switch between visual editing and raw Markdown at any time.
+- Open **Aide Markdown** from the application menu for syntax examples and a list of features supported by the visual editor.
+- Use emoji shortcodes such as `:joy:` in Markdown; they render as emoji in the visual editor. Footnotes, heading IDs, definition lists, highlighting, subscripts, and superscripts are not currently rendered visually.
 - Insert one of the available Mermaid templates at the cursor from the context menu (right-click).
 - Edit Mermaid diagrams in the document and switch their blocks between preview and code.
 - Render Mermaid `xychart-beta` charts even when series have different lengths: rendering is limited to categories with a value in every series, and skipped points are reported.
