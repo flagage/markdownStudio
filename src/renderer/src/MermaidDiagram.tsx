@@ -123,16 +123,11 @@ export default function MermaidDiagram({ chart }: { chart: string }) {
         </button>
       </div>
       <div className="diagram-viewport">
-        {error ? (
-          <pre className="diagram-error">Erreur Mermaid : {error}</pre>
-        ) : (
-          <>
-            <div className="diagram-canvas" style={{ width: `${zoom * 100}%` }}>
-              <div ref={containerRef} className="diagram-output" />
-            </div>
-            {warning && <p className="diagram-warning">{warning}</p>}
-          </>
-        )}
+        {error && <pre className="diagram-error">Erreur Mermaid : {error}</pre>}
+        <div className="diagram-canvas" hidden={!!error} style={{ width: `${zoom * 100}%` }}>
+          <div ref={containerRef} className="diagram-output" />
+        </div>
+        {!error && warning && <p className="diagram-warning">{warning}</p>}
       </div>
     </div>
   )
