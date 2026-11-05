@@ -641,6 +641,18 @@ export default function App() {
     })
   }
 
+  async function closeOtherDocuments() {
+    if (!activePath || !documentsRef.current.some((document) => document.path === activePath)) return
+    if (!(await saveAllDocuments())) return
+
+    const remaining = documentsRef.current.filter((document) => document.path === activePath)
+    if (remaining.length === 0) return
+    setDocuments(remaining)
+    setActivePath(activePath)
+    setSplitView(false)
+    setSplitPaths([activePath, null])
+  }
+
   function toggleSplitView() {
     if (splitView) {
       setSplitView(false)
@@ -1333,6 +1345,17 @@ export default function App() {
                     </div>
                   )
                 })}
+                {documents.length > 1 && (
+                  <button
+                    type="button"
+                    className="close-other-tabs"
+                    aria-label="Fermer tous les autres onglets"
+                    title="Fermer tous les autres onglets"
+                    onClick={() => void closeOtherDocuments()}
+                  >
+                    Fermer les autres
+                  </button>
+                )}
                 <button
                   type="button"
                   className={`split-toggle ${splitView ? 'selected' : ''}`}

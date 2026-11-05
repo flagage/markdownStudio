@@ -21,7 +21,7 @@ npm run dev
 - Search whole words in Markdown notes recursively from the current folder. In an open note, use `Ctrl+F` / `Cmd+F` to search and navigate occurrences; use `Ctrl+Shift+F` / `Cmd+Shift+F` to focus the workspace search.
 - Move files and folders by dragging and dropping, or by clicking “Move” and then the destination.
 - Rename a file or folder from its context menu (right-click).
-- Keep multiple notes open in tabs and view two documents side by side.
+- Keep multiple notes open in tabs, close all tabs except the active one, and view two documents side by side.
 - Create folders and `.md` files.
 - Create Markdown templates, manage them from the explorer, or turn an existing file into a template using its context menu (right-click). Templates are available in all workspaces and can be used when creating a file.
 - Edit and save files with `Ctrl+S` or `Cmd+S`.
