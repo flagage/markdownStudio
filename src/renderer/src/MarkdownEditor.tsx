@@ -410,6 +410,41 @@ function normalizeAtxHeadingSpacing(markdown: string): string {
   }).join('\n')
 }
 
+function parseMarkdownHeadings(markdown: string): Array<{ level: number; title: string; line: number }> {
+  const headings: Array<{ level: number; title: string; line: number }> = []
+  const lines = markdown.split(/\r?\n/)
+  let fence: { marker: '`' | '~'; length: number } | null = null
+
+  lines.forEach((line, index) => {
+    const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})/)
+    if (fenceMatch) {
+      const marker = fenceMatch[1][0] as '`' | '~'
+      if (!fence) {
+        fence = { marker, length: fenceMatch[1].length }
+      } else if (
+        marker === fence.marker &&
+        fenceMatch[1].length >= fence.length &&
+        /^ {0,3}(?:`{3,}|~{3,})[ \t]*$/.test(line)
+      ) {
+        fence = null
+      }
+      return
+    }
+
+    if (fence) return
+
+    const match = line.match(/^(?: {0,3})(#{1,6})(?!#)(?:[ \t]+(.*?))?[ \t]*#*[ \t]*$/)
+    if (!match) return
+
+    const title = (match[2] ?? '').trim()
+    if (!title) return
+
+    headings.push({ level: match[1].length, title, line: index })
+  })
+
+  return headings
+}
+
 const pastedImageTypes = new Set(['image/gif', 'image/jpeg', 'image/png', 'image/webp'])
 
 function getPastedImage(event: ClipboardEvent | React.ClipboardEvent): File | null {
@@ -464,6 +499,7 @@ export default function MarkdownEditor({
   const [selectedMermaidTemplateId, setSelectedMermaidTemplateId] = useState('flowchart-v2')
   const [rawMarkdownMode, setRawMarkdownMode] = useState(false)
   const rawMarkdownEditorRef = useRef<HTMLTextAreaElement>(null)
+  const documentOutline = useMemo(() => parseMarkdownHeadings(value), [value])
   // L’éditeur garde ses options du premier rendu : le collage lit le document courant ici.
   const pasteTargetRef = useRef({ documentPath, external })
   pasteTargetRef.current = { documentPath, external }
@@ -633,6 +669,34 @@ export default function MarkdownEditor({
   }, [contextMenu, mermaidPickerOpen])
 
   if (!editor) return <div className="editor-loading">Préparation de l’éditeur…</div>
+
+  function jumpToHeading(index: number) {
+    if (rawMarkdownMode) {
+      const textarea = rawMarkdownEditorRef.current
+      if (!textarea) return
+      const targetHeading = documentOutline[index]
+      const targetLine = targetHeading ? targetHeading.line : 0
+      const lines = textarea.value.split(/\r?\n/)
+      let offset = 0
+      for (let lineIndex = 0; lineIndex < targetLine; lineIndex += 1) {
+        offset += lines[lineIndex].length + 1
+      }
+      textarea.focus()
+      textarea.setSelectionRange(offset, offset)
+      textarea.scrollTop = Math.max(0, (targetLine - 1) * 20)
+      return
+    }
+
+    if (!editor) return
+    const positions: number[] = []
+    editor.state.doc.descendants((node, position) => {
+      if (node.type.name === 'heading') positions.push(position)
+    })
+    const targetPosition = positions[index]
+    if (targetPosition === undefined) return
+
+    editor.chain().focus().setTextSelection(targetPosition).scrollIntoView().run()
+  }
 
   function showContextMenu(event: React.MouseEvent<HTMLDivElement>) {
     event.preventDefault()
@@ -839,6 +903,20 @@ export default function MarkdownEditor({
       <div className={`writing-surface ${rawMarkdownMode ? 'raw-markdown-surface' : ''}`}>
         {rawMarkdownMode ? (
           <>
+            {documentOutline.length > 0 && (
+              <nav className="document-outline" aria-label="Plan du document">
+                <div className="document-outline-header">Plan du document</div>
+                <ul className="document-outline-list">
+                  {documentOutline.map((heading, index) => (
+                    <li key={`${heading.level}-${heading.line}-${heading.title}`} className={`outline-level-${heading.level}`}>
+                      <button type="button" className="document-outline-link" onClick={() => jumpToHeading(index)}>
+                        {heading.title}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+            )}
             <textarea
               ref={rawMarkdownEditorRef}
               className="raw-markdown-editor"
@@ -864,8 +942,24 @@ export default function MarkdownEditor({
             <pre className="raw-markdown-print">{value}</pre>
           </>
         ) : (
-          <div className="visual-editor-surface" onContextMenu={showContextMenu}>
-            <EditorContent editor={editor} />
+          <div className={`visual-editor-surface ${documentOutline.length > 0 ? 'with-outline' : ''}`} onContextMenu={showContextMenu}>
+            {documentOutline.length > 0 && (
+              <nav className="document-outline" aria-label="Plan du document">
+                <div className="document-outline-header">Plan du document</div>
+                <ul className="document-outline-list">
+                  {documentOutline.map((heading, index) => (
+                    <li key={`${heading.level}-${heading.line}-${heading.title}`} className={`outline-level-${heading.level}`}>
+                      <button type="button" className="document-outline-link" onClick={() => jumpToHeading(index)}>
+                        {heading.title}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+            )}
+            <div className="visual-editor-main">
+              <EditorContent editor={editor} />
+            </div>
             {contextMenu && (
               <div
                 className="editor-context-menu"
