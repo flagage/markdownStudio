@@ -527,25 +527,57 @@ kbd {
 /* ---------- Page d’écriture ---------- */
 .writing-surface { flex: 1; overflow: auto; padding: 28px 32px 56px; }
 .writing-surface:not(.raw-markdown-surface) { background: var(--bg-app); }
-.document-outline {
-  position: sticky;
-  top: 18px;
-  align-self: start;
-  width: 210px;
-  max-height: calc(100vh - 200px);
-  padding: 14px 12px;
+.document-outline-control { position: relative; flex: 0 0 auto; }
+.format-toolbar .document-outline-toggle {
+  display: inline-flex;
+  min-width: 56px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-color: var(--border);
+  background: var(--bg-surface);
+  color: var(--text);
+}
+.format-toolbar .document-outline-toggle.active { border-color: color-mix(in srgb, var(--accent) 35%, transparent); background: var(--accent-soft); color: var(--accent-text); }
+.document-outline-count { min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--bg-hover); color: var(--text-muted); font: 10px/17px var(--font-mono); text-align: center; }
+.document-outline-popover {
+  position: absolute;
+  z-index: 15;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(280px, calc(100vw - 32px));
+  max-height: min(420px, 60vh);
+  overflow: auto;
+  padding: 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-surface);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-lg);
 }
 .document-outline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 8px;
   color: var(--text-muted);
   font: 700 11px var(--font-ui);
   letter-spacing: .08em;
   text-transform: uppercase;
 }
+.document-outline-header button {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font: 18px/1 var(--font-ui);
+  text-transform: none;
+}
+.document-outline-header button:hover { background: var(--bg-hover); color: var(--text); }
 .document-outline-list {
   display: flex;
   flex-direction: column;
@@ -556,13 +588,16 @@ kbd {
 }
 .document-outline-link {
   width: 100%;
-  padding: 6px 8px;
+  overflow: hidden;
+  padding: 5px 8px;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--text);
-  font: 13px/1.3 var(--font-ui);
+  font: 12px/1.35 var(--font-ui);
   text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
   transition: background-color 120ms ease, color 120ms ease;
 }
@@ -573,15 +608,13 @@ kbd {
   outline: none;
 }
 .outline-level-1 .document-outline-link { font-weight: 600; }
-.outline-level-2 .document-outline-link { padding-left: 12px; }
-.outline-level-3 .document-outline-link { padding-left: 20px; }
-.outline-level-4 .document-outline-link { padding-left: 28px; }
-.outline-level-5 .document-outline-link { padding-left: 36px; }
-.outline-level-6 .document-outline-link { padding-left: 44px; }
+.outline-level-2 .document-outline-link { padding-left: 16px; }
+.outline-level-3 .document-outline-link { padding-left: 24px; }
+.outline-level-4 .document-outline-link { padding-left: 32px; }
+.outline-level-5 .document-outline-link { padding-left: 40px; }
+.outline-level-6 .document-outline-link { padding-left: 48px; }
 .visual-editor-surface {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
   width: min(100%, 940px);
   min-height: 100%;
   margin: 0 auto;
@@ -591,18 +624,10 @@ kbd {
   background: var(--bg-surface);
   box-shadow: var(--shadow-md);
 }
-.visual-editor-surface.with-outline {
-  grid-template-columns: 210px minmax(0, 1fr);
-  gap: 20px;
-}
 .visual-editor-main {
   min-width: 0;
 }
 .raw-markdown-surface {
-  display: grid;
-  grid-template-columns: 210px minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
   padding: 0;
   background: var(--bg-surface);
 }

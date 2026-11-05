@@ -498,6 +498,7 @@ export default function MarkdownEditor({
   const [mermaidPickerOpen, setMermaidPickerOpen] = useState(false)
   const [selectedMermaidTemplateId, setSelectedMermaidTemplateId] = useState('flowchart-v2')
   const [rawMarkdownMode, setRawMarkdownMode] = useState(false)
+  const [outlineOpen, setOutlineOpen] = useState(false)
   const rawMarkdownEditorRef = useRef<HTMLTextAreaElement>(null)
   const documentOutline = useMemo(() => parseMarkdownHeadings(value), [value])
   // L’éditeur garde ses options du premier rendu : le collage lit le document courant ici.
@@ -698,6 +699,44 @@ export default function MarkdownEditor({
     editor.chain().focus().setTextSelection(targetPosition).scrollIntoView().run()
   }
 
+  const outlineControl = documentOutline.length > 0 && (
+    <div className="document-outline-control">
+      <button
+        type="button"
+        className={`document-outline-toggle ${outlineOpen ? 'active' : ''}`}
+        aria-expanded={outlineOpen}
+        title="Afficher ou masquer le plan du document"
+        onClick={() => setOutlineOpen((open) => !open)}
+      >
+        Plan <span className="document-outline-count" aria-hidden="true">{documentOutline.length}</span>
+      </button>
+      {outlineOpen && (
+        <nav className="document-outline-popover" aria-label="Plan du document">
+          <div className="document-outline-header">
+            <span>Plan du document</span>
+            <button type="button" aria-label="Fermer le plan" onClick={() => setOutlineOpen(false)}>×</button>
+          </div>
+          <ul className="document-outline-list">
+            {documentOutline.map((heading, index) => (
+              <li key={`${heading.level}-${heading.line}-${heading.title}`} className={`outline-level-${heading.level}`}>
+                <button
+                  type="button"
+                  className="document-outline-link"
+                  onClick={() => {
+                    jumpToHeading(index)
+                    setOutlineOpen(false)
+                  }}
+                >
+                  {heading.title}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
+    </div>
+  )
+
   function showContextMenu(event: React.MouseEvent<HTMLDivElement>) {
     event.preventDefault()
     const position = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
@@ -867,6 +906,7 @@ export default function MarkdownEditor({
         >
           {rawMarkdownMode ? 'Mode visuel' : 'Markdown brut'}
         </button>
+        {outlineControl}
         <div className="page-find-toolbar" role="search" aria-label="Rechercher dans cette page">
           <input
             ref={findInputRef}
@@ -903,20 +943,6 @@ export default function MarkdownEditor({
       <div className={`writing-surface ${rawMarkdownMode ? 'raw-markdown-surface' : ''}`}>
         {rawMarkdownMode ? (
           <>
-            {documentOutline.length > 0 && (
-              <nav className="document-outline" aria-label="Plan du document">
-                <div className="document-outline-header">Plan du document</div>
-                <ul className="document-outline-list">
-                  {documentOutline.map((heading, index) => (
-                    <li key={`${heading.level}-${heading.line}-${heading.title}`} className={`outline-level-${heading.level}`}>
-                      <button type="button" className="document-outline-link" onClick={() => jumpToHeading(index)}>
-                        {heading.title}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </nav>
-            )}
             <textarea
               ref={rawMarkdownEditorRef}
               className="raw-markdown-editor"
@@ -942,21 +968,7 @@ export default function MarkdownEditor({
             <pre className="raw-markdown-print">{value}</pre>
           </>
         ) : (
-          <div className={`visual-editor-surface ${documentOutline.length > 0 ? 'with-outline' : ''}`} onContextMenu={showContextMenu}>
-            {documentOutline.length > 0 && (
-              <nav className="document-outline" aria-label="Plan du document">
-                <div className="document-outline-header">Plan du document</div>
-                <ul className="document-outline-list">
-                  {documentOutline.map((heading, index) => (
-                    <li key={`${heading.level}-${heading.line}-${heading.title}`} className={`outline-level-${heading.level}`}>
-                      <button type="button" className="document-outline-link" onClick={() => jumpToHeading(index)}>
-                        {heading.title}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </nav>
-            )}
+          <div className="visual-editor-surface" onContextMenu={showContextMenu}>
             <div className="visual-editor-main">
               <EditorContent editor={editor} />
             </div>

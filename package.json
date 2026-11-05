@@ -1,6 +1,6 @@
 {
   "name": "markdown-studio",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "productName": "Markdown Studio",
   "description": "Editeur Markdown de bureau avec prise en charge de Mermaid",
   "author": "Fred <fred@lagage.fr>",
