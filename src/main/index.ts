@@ -943,7 +943,7 @@ function encodeMimeBase64(value: Buffer | string): string {
 }
 
 function createEmailMessage(title: string, content: string): string {
-  const boundary = `markdown-studio-${randomUUID()}`
+  const boundary = `plumelier-${randomUUID()}`
   const imageTagPattern = /<img\b[^>]*\bsrc=(["'])(data:image\/[a-z\d.+-]+;base64,([^"']+))\1[^>]*>/gi
   const imageParts: string[] = []
   let html = ''
@@ -1086,7 +1086,7 @@ ipcMain.handle(
     if (format === 'docx') {
       const converted = await HTMLtoDOCX(html, null, {
         title,
-        creator: 'Markdown Studio',
+        creator: 'Plumelier',
         lang: 'fr-FR'
       })
       const data = Buffer.isBuffer(converted)
@@ -1107,7 +1107,7 @@ ipcMain.handle(
     })
     // Un fichier temporaire plutôt qu’une URL data: : Chromium limite la taille des URL
     // à 2 Mo, ce que dépassent vite les images et diagrammes intégrés.
-    const htmlPath = path.join(tmpdir(), `markdown-studio-export-${randomUUID()}.html`)
+    const htmlPath = path.join(tmpdir(), `plumelier-export-${randomUUID()}.html`)
     try {
       await writeFile(htmlPath, html, 'utf8')
       await exportWindow.loadFile(htmlPath)

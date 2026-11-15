@@ -1,4 +1,4 @@
-# Markdown Studio
+# Plumelier
 
 A TypeScript desktop Markdown editor with a file explorer, live editing,
 preview, and Mermaid diagram rendering.
@@ -16,7 +16,7 @@ npm run dev
 
 - Open a local folder and navigate its subfolders.
 - Open a `.md` file directly from the File menu or by dragging it into the application.
-- Open `.md` files from the desktop by associating them with Markdown Studio.
+- Open `.md` files from the desktop by associating them with Plumelier.
 - Browse files and folders sorted alphabetically.
 - Search whole words in Markdown notes recursively from the current folder. In an open note, use `Ctrl+F` / `Cmd+F` to search and navigate occurrences; use `Ctrl+Shift+F` / `Cmd+Shift+F` to focus the workspace search.
 - Move files and folders by dragging and dropping, or by clicking “Move” and then the destination.
@@ -26,7 +26,7 @@ npm run dev
 - Create Markdown templates, manage them from the explorer, or turn an existing file into a template using its context menu (right-click). Templates are available in all workspaces and can be used when creating a file.
 - Edit and save files with `Ctrl+S` or `Cmd+S`.
 - Print the active note with `Ctrl+P` or `Cmd+P`, from the File menu or toolbar.
-- Customize the Markdown Studio logo color by clicking the logo; the choice is saved on this device.
+- Customize the Plumelier logo color by clicking the logo; the choice is saved on this device.
 - Write directly in a formatted view, with a toolbar for headings, bold, italics, lists, quotes, and code blocks.
 - Insert PNG, JPEG, GIF, WebP, or BMP images from the editor toolbar; images are copied beside the Markdown document and referenced with a relative link, then displayed inline.
 - Switch between visual editing and raw Markdown at any time.
@@ -49,7 +49,7 @@ npm run dev
 
 ## License
 
-Markdown Studio is distributed under the MIT license. See [LICENSE](./LICENSE).
+Plumelier is distributed under the MIT license. See [LICENSE](./LICENSE).
 This permissive license is compatible with Mermaid, which is also distributed
 under the MIT license. Third-party dependencies retain their own licenses,
 which must be respected when distributing the application.
@@ -67,11 +67,11 @@ The manual **Build installers** workflow (Actions → Build installers → Run w
 builds the Linux and Windows packages on their respective platforms and
 publishes them as downloadable artifacts.
 
-To install the Debian package: `sudo apt install ./release/markdown-studio-<version>-linux-amd64.deb`.
+To install the Debian package: `sudo apt install ./release/plumelier-<version>-linux-amd64.deb`.
 The AppImage requires FUSE 2. On Debian/Ubuntu, install `libfuse2` (or
 `libfuse2t64` on versions that provide it), then run the AppImage without
-`sudo`: `./release/markdown-studio-<version>-linux-x86_64.AppImage`.
+`sudo`: `./release/plumelier-<version>-linux-x86_64.AppImage`.
 If FUSE cannot be installed, the contents can be extracted with
-`./release/markdown-studio-<version>-linux-x86_64.AppImage --appimage-extract`,
+`./release/plumelier-<version>-linux-x86_64.AppImage --appimage-extract`,
 then launch the application from the `squashfs-root` directory.
 On Windows, run the generated `.exe` file and follow the NSIS installer.

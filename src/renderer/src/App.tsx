@@ -1101,7 +1101,7 @@ export default function App() {
           >
             <LogoMark className="brand-mark" />
           </button>
-          <span>Markdown Studio</span>
+          <span>Plumelier</span>
           {brandColorPickerOpen && (
             <div className="brand-color-panel" role="dialog" aria-label="Personnaliser le logo">
               <button
@@ -1460,7 +1460,7 @@ export default function App() {
             : 'Markdown'}
           {splitView && ' · Vue côte à côte'}
         </span>
-        <a href="mailto:fred@lagage.fr" title="Markdown Studio — Licence MIT">
+        <a href="mailto:fred@lagage.fr" title="Plumelier — Licence MIT">
           © 2026 Fred · MIT
         </a>
       </footer>

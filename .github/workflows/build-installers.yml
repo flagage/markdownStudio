@@ -36,7 +36,7 @@ jobs:
       - run: npm run ${{ matrix.command }}
       - uses: actions/upload-artifact@v4
         with:
-          name: markdown-studio-${{ matrix.target }}
+          name: plumelier-${{ matrix.target }}
           path: ${{ matrix.files }}
           if-no-files-found: error
 
@@ -54,7 +54,7 @@ jobs:
       - run: >
           gh release create "$GITHUB_REF_NAME" installers/*
           --repo "$GITHUB_REPOSITORY"
-          --title "Markdown Studio $GITHUB_REF_NAME"
+          --title "Plumelier $GITHUB_REF_NAME"
           --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}

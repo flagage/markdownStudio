@@ -33,7 +33,7 @@ const syntaxGroups = [
     ]
   },
   {
-    title: 'Markdown Studio',
+    title: 'Plumelier',
     entries: [
       { name: 'Deux colonnes', markdown: '::: columns\\n::: column\\nTexte de gauche\\n::: column\\nTexte de droite\\n:::', supported: true, preview: <div className="markdown-help-columns"><span>Texte de gauche</span><span>Texte de droite</span></div> },
       { name: 'Diagramme Mermaid', markdown: '```mermaid\\nflowchart LR\\n  A --> B\\n```', supported: true, preview: <span>Diagramme Mermaid modifiable</span> }

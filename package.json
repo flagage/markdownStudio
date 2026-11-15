@@ -1,11 +1,11 @@
 {
-  "name": "markdown-studio",
+  "name": "plumelier",
   "version": "0.3.0",
-  "productName": "Markdown Studio",
+  "productName": "Plumelier",
   "description": "Editeur Markdown de bureau avec prise en charge de Mermaid",
   "author": "Fred <fred@lagage.fr>",
   "homepage": "mailto:fred@lagage.fr",
-  "desktopName": "Markdown Studio",
+  "desktopName": "Plumelier",
   "license": "MIT",
   "main": "./out/main/index.js",
   "engines": {
@@ -50,7 +50,7 @@
   },
   "build": {
     "appId": "fr.lagage.markdownstudio",
-    "productName": "Markdown Studio",
+    "productName": "Plumelier",
     "asar": true,
     "directories": {
       "output": "release",
@@ -96,7 +96,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Markdown Studio"
+      "shortcutName": "Plumelier"
     }
   }
 }
