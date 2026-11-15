@@ -31,7 +31,12 @@ interface Window {
     select: () => Promise<WorkspaceInfo | null>
     openFile: () => Promise<{ path: string; content: string } | null>
     openDroppedFile: (filePath: string) => Promise<{ path: string; content: string }>
-    writeExternal: (filePath: string, content: string) => Promise<void>
+    writeExternal: (
+      filePath: string,
+      content: string,
+      expectedContent: string,
+      overwrite?: boolean
+    ) => Promise<boolean>
     onOpenFile: (callback: () => void) => () => void
     onPrintDocument: (callback: () => void) => () => void
     exportDocument: (
@@ -74,7 +79,12 @@ interface Window {
     list: (directory: string) => Promise<WorkspaceEntry[]>
     search: (directory: string, query: string) => Promise<WorkspaceEntry[]>
     read: (filePath: string) => Promise<string>
-    write: (filePath: string, content: string) => Promise<void>
+    write: (
+      filePath: string,
+      content: string,
+      expectedContent: string,
+      overwrite?: boolean
+    ) => Promise<boolean>
     create: (
       directory: string,
       name: string,

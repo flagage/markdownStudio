@@ -9,6 +9,7 @@ import HTMLtoDOCX from 'html-to-docx'
 import { marked } from 'marked'
 import { markedColumnsExtension } from '../shared/columnsMarkdown'
 import { createExportMarked, isMermaidCodeBlock, type ExportDiagram } from '../shared/exportDiagrams'
+import { canWriteFile } from '../shared/fileSaveConflict'
 
 marked.use(markedColumnsExtension)
 
@@ -1244,17 +1245,42 @@ ipcMain.handle(
   }
 )
 
-ipcMain.handle('workspace:write-external', async (_event, filePath: string, content: string) => {
-  if (!path.isAbsolute(filePath) || path.extname(filePath).toLowerCase() !== '.md') {
-    throw new Error('Seuls les fichiers Markdown (.md) peuvent être enregistrés.')
+async function writeMarkdownIfUnchanged(
+  filePath: string,
+  content: string,
+  expectedContent: string,
+  overwrite: boolean
+): Promise<boolean> {
+  if (typeof content !== 'string' || typeof expectedContent !== 'string' ||
+    typeof overwrite !== 'boolean') {
+    throw new Error('Les données de sauvegarde sont invalides.')
   }
-  const fileStats = await stat(filePath)
-  if (!fileStats.isFile()) {
-    throw new Error('Le chemin demandé ne correspond pas à un fichier.')
-  }
+  const currentContent = await readFile(filePath, 'utf8')
+  if (!canWriteFile(currentContent, expectedContent, overwrite)) return false
   await writeFile(filePath, content, 'utf8')
   markdownSearchIndex.delete(filePath)
-})
+  return true
+}
+
+ipcMain.handle(
+  'workspace:write-external',
+  async (
+    _event,
+    filePath: string,
+    content: string,
+    expectedContent: string,
+    overwrite = false
+  ) => {
+    if (!path.isAbsolute(filePath) || path.extname(filePath).toLowerCase() !== '.md') {
+      throw new Error('Seuls les fichiers Markdown (.md) peuvent être enregistrés.')
+    }
+    const fileStats = await stat(filePath)
+    if (!fileStats.isFile()) {
+      throw new Error('Le chemin demandé ne correspond pas à un fichier.')
+    }
+    return writeMarkdownIfUnchanged(filePath, content, expectedContent, overwrite)
+  }
+)
 
 ipcMain.handle('workspace:restore', async () => {
   let contents: string
@@ -1329,14 +1355,22 @@ ipcMain.handle('workspace:read', async (_event, filePath: string) => {
   return content
 })
 
-ipcMain.handle('workspace:write', async (_event, filePath: string, content: string) => {
-  const resolvedFile = resolveInsideWorkspace(filePath)
-  if (path.extname(resolvedFile).toLowerCase() !== '.md') {
-    throw new Error('Seuls les fichiers Markdown (.md) peuvent être enregistrés.')
+ipcMain.handle(
+  'workspace:write',
+  async (
+    _event,
+    filePath: string,
+    content: string,
+    expectedContent: string,
+    overwrite = false
+  ) => {
+    const resolvedFile = resolveInsideWorkspace(filePath)
+    if (path.extname(resolvedFile).toLowerCase() !== '.md') {
+      throw new Error('Seuls les fichiers Markdown (.md) peuvent être enregistrés.')
+    }
+    return writeMarkdownIfUnchanged(resolvedFile, content, expectedContent, overwrite)
   }
-  await writeFile(resolvedFile, content, 'utf8')
-  markdownSearchIndex.delete(resolvedFile)
-})
+)
 
 ipcMain.handle(
   'workspace:create',

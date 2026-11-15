@@ -5,6 +5,12 @@ import { renderMermaidDiagramsForExport } from './mermaidExport'
 import AppMenu from './AppMenu'
 import Icon from './Icons'
 import MarkdownHelp from './MarkdownHelp'
+import {
+  clearRecoveryDraft,
+  getRecoveryDraftKey,
+  readRecoveryDraft,
+  writeRecoveryDraft
+} from './recoveryDrafts'
 
 type Theme = 'light' | 'dark'
 
@@ -27,6 +33,13 @@ interface OpenDocument {
   content: string
   savedContent: string
   external: boolean
+}
+
+type DocumentSaveState = 'saving' | 'error' | 'conflict'
+
+interface RecoveryPrompt {
+  path: string
+  content: string
 }
 
 type NewEntryKind = 'file' | 'directory'
@@ -116,6 +129,8 @@ export default function App() {
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [documents, setDocuments] = useState<OpenDocument[]>([])
+  const [saveStates, setSaveStates] = useState<Record<string, DocumentSaveState>>({})
+  const [recoveryPrompt, setRecoveryPrompt] = useState<RecoveryPrompt | null>(null)
   const [activePath, setActivePath] = useState<string | null>(null)
   const [focusDocumentPath, setFocusDocumentPath] = useState<string | null>(null)
   const [splitView, setSplitView] = useState(false)
@@ -149,7 +164,7 @@ export default function App() {
   const [renamingEntry, setRenamingEntry] = useState(false)
   const [renameEntryError, setRenameEntryError] = useState<string | null>(null)
   const documentsRef = useRef(documents)
-  const saveQueues = useRef(new Map<string, Promise<void>>())
+  const saveQueues = useRef(new Map<string, Promise<boolean>>())
   const openMarkdownFileRef = useRef<() => void>(() => {})
   const printDocumentRef = useRef<() => void>(() => {})
   const exportDocumentRef = useRef<(format: 'pdf' | 'docx' | 'eml') => Promise<void>>(
@@ -376,8 +391,8 @@ export default function App() {
     if (activePath && !(await saveFile(activePath))) return
     try {
       const selected = await window.workspace.openFile()
-      if (selected) openLoadedDocument(selected.path, selected.content, true)
       setError(null)
+      if (selected) openLoadedDocument(selected.path, selected.content, true)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
     }
@@ -391,8 +406,8 @@ export default function App() {
     if (activePath && !(await saveFile(activePath))) return
     try {
       const dropped = await window.workspace.openDroppedFile(filePath)
-      openLoadedDocument(dropped.path, dropped.content, true)
       setError(null)
+      openLoadedDocument(dropped.path, dropped.content, true)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
     }
@@ -410,6 +425,7 @@ export default function App() {
       }
       return
     }
+    checkForRecoveryDraft(path, content, external)
     const previousPath = activePath
     setDocuments((current) => [...current, {
       path,
@@ -440,6 +456,8 @@ export default function App() {
 
     try {
       const text = await window.workspace.read(entry.path)
+      setError(null)
+      checkForRecoveryDraft(entry.path, text, false)
       const previousPath = activePath
       setDocuments((current) => [...current, {
         path: entry.path,
@@ -449,40 +467,87 @@ export default function App() {
       }])
       setActivePath(entry.path)
       if (splitView) setSplitPaths([entry.path, previousPath])
-      setError(null)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
     }
+  }
+
+  function checkForRecoveryDraft(path: string, savedContent: string, external: boolean) {
+    const key = getRecoveryDraftKey(path, external, workspace?.path ?? null)
+    try {
+      const recoveredContent = readRecoveryDraft(window.localStorage, key)
+      if (recoveredContent === null) return
+      if (recoveredContent === savedContent) {
+        clearRecoveryDraft(window.localStorage, key)
+        return
+      }
+      setRecoveryPrompt({ path, content: recoveredContent })
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    }
+  }
+
+  function updateSaveState(path: string, state: DocumentSaveState | null) {
+    setSaveStates((current) => {
+      if (state === null) {
+        const { [path]: _removed, ...remaining } = current
+        return remaining
+      }
+      return { ...current, [path]: state }
+    })
   }
 
   function updateDocument(path: string, content: string) {
     setDocuments((current) =>
       current.map((document) => (document.path === path ? { ...document, content } : document))
     )
+    if (saveStates[path] === 'error') updateSaveState(path, null)
+    setError(null)
   }
 
-  async function saveFile(path: string | null = activePath) {
+  async function saveFile(path: string | null = activePath, overwrite = false) {
     if (!path) return true
     const previousSave = saveQueues.current.get(path)
     const saveTask = (async () => {
       if (previousSave) await previousSave.catch(() => {})
       const document = documentsRef.current.find((item) => item.path === path)
-      if (!document || document.content === document.savedContent) return
+      if (!document || document.content === document.savedContent) return true
       const content = document.content
-      if (document.external) await window.workspace.writeExternal(path, content)
-      else await window.workspace.write(path, content)
+      updateSaveState(path, 'saving')
+      const saved = document.external
+        ? await window.workspace.writeExternal(path, content, document.savedContent, overwrite)
+        : await window.workspace.write(path, content, document.savedContent, overwrite)
+      if (!saved) {
+        updateSaveState(path, 'conflict')
+        setError(null)
+        return false
+      }
       setDocuments((current) =>
         current.map((item) =>
           item.path === path ? { ...item, savedContent: content } : item
         )
       )
-      setError(null)
+      updateSaveState(path, null)
+      let recoveryCleared = true
+      if (documentsRef.current.find((item) => item.path === path)?.content === content) {
+        try {
+          clearRecoveryDraft(
+            window.localStorage,
+            getRecoveryDraftKey(path, document.external, workspace?.path ?? null)
+          )
+        } catch (reason) {
+          recoveryCleared = false
+          setError(reason instanceof Error ? reason.message : String(reason))
+        }
+      }
+      if (recoveryCleared) setError(null)
+      return true
     })()
     saveQueues.current.set(path, saveTask)
     try {
-      await saveTask
-      return true
+      return await saveTask
     } catch (reason) {
+      updateSaveState(path, 'error')
       setError(reason instanceof Error ? reason.message : String(reason))
       return false
     } finally {
@@ -495,6 +560,55 @@ export default function App() {
       if (!(await saveFile(document.path))) return false
     }
     return true
+  }
+
+  async function reloadConflictedDocument(path: string) {
+    const document = documentsRef.current.find((item) => item.path === path)
+    if (!document) return
+    try {
+      const content = document.external
+        ? (await window.workspace.openDroppedFile(path)).content
+        : await window.workspace.read(path)
+      setDocuments((current) => current.map((item) =>
+        item.path === path ? { ...item, content, savedContent: content } : item
+      ))
+      updateSaveState(path, null)
+      clearRecoveryDraft(
+        window.localStorage,
+        getRecoveryDraftKey(path, document.external, workspace?.path ?? null)
+      )
+      setError(null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    }
+  }
+
+  function restoreRecoveryDraft() {
+    if (!recoveryPrompt) return
+    setDocuments((current) => current.map((document) =>
+      document.path === recoveryPrompt.path
+        ? { ...document, content: recoveryPrompt.content }
+        : document
+    ))
+    setRecoveryPrompt(null)
+  }
+
+  function discardRecoveryDraft() {
+    if (!recoveryPrompt) return
+    const document = documentsRef.current.find((item) => item.path === recoveryPrompt.path)
+    if (!document) {
+      setRecoveryPrompt(null)
+      return
+    }
+    try {
+      clearRecoveryDraft(
+        window.localStorage,
+        getRecoveryDraftKey(document.path, document.external, workspace?.path ?? null)
+      )
+      setRecoveryPrompt(null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    }
   }
 
   function printDocument() {
@@ -619,16 +733,35 @@ export default function App() {
     return true
   }
 
-  async function closeDocument(path: string) {
+  async function closeDocument(path: string, keepRecoveryDraft = false) {
     const document = documents.find((item) => item.path === path)
     if (!document) return
-    if (!(await saveAllDocuments())) return
+    if (keepRecoveryDraft) {
+      for (const item of documentsRef.current) {
+        if (item.path !== path && !(await saveFile(item.path))) return
+      }
+      if (document.content !== document.savedContent) {
+        try {
+          writeRecoveryDraft(
+            window.localStorage,
+            getRecoveryDraftKey(path, document.external, workspace?.path ?? null),
+            document.content
+          )
+        } catch (reason) {
+          setError(reason instanceof Error ? reason.message : String(reason))
+          return
+        }
+      }
+    } else if (!(await saveAllDocuments())) {
+      return
+    }
 
     const remaining = documents.filter((item) => item.path !== path)
     const nextActive = activePath === path
       ? remaining[Math.max(0, documents.findIndex((item) => item.path === path) - 1)]?.path ?? null
       : activePath
     setDocuments(remaining)
+    updateSaveState(path, null)
     setActivePath(nextActive)
     setSplitPaths(([left, right]) => {
       let nextLeft = left === path ? nextActive : left
@@ -984,11 +1117,45 @@ export default function App() {
   }, [templateManagerOpen, templateDraft, savingTemplate])
 
   useEffect(() => {
-    const timers = documents
-      .filter((document) => document.content !== document.savedContent)
-      .map((document) => window.setTimeout(() => void saveFile(document.path), 700))
-    return () => timers.forEach(window.clearTimeout)
-  }, [documents])
+    const timers: number[] = []
+    for (const document of documents) {
+      if (document.content === document.savedContent) continue
+      const recoveryKey = getRecoveryDraftKey(
+        document.path,
+        document.external,
+        workspace?.path ?? null
+      )
+      const draftContent = document.content
+      timers.push(window.setTimeout(() => {
+        try {
+          writeRecoveryDraft(window.localStorage, recoveryKey, draftContent)
+        } catch (reason) {
+          setError(reason instanceof Error ? reason.message : String(reason))
+        }
+      }, 200))
+      timers.push(window.setTimeout(() => void saveFile(document.path), 700))
+    }
+
+    const persistRecoveryDrafts = () => {
+      for (const document of documents) {
+        if (document.content === document.savedContent) continue
+        try {
+          writeRecoveryDraft(
+            window.localStorage,
+            getRecoveryDraftKey(document.path, document.external, workspace?.path ?? null),
+            document.content
+          )
+        } catch (reason) {
+          setError(reason instanceof Error ? reason.message : String(reason))
+        }
+      }
+    }
+    window.addEventListener('beforeunload', persistRecoveryDrafts)
+    return () => {
+      timers.forEach(window.clearTimeout)
+      window.removeEventListener('beforeunload', persistRecoveryDrafts)
+    }
+  }, [documents, workspace?.path])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1152,14 +1319,32 @@ export default function App() {
               <span className="document-title-name">{activeDocument.path.split(/[\\/]/).at(-1)}</span>
               <button
                 type="button"
-                className={`save-status ${activeDocument.content === activeDocument.savedContent ? 'saved' : 'pending'}`}
+                className={`save-status ${
+                  activeDocument.content === activeDocument.savedContent
+                    ? 'saved'
+                    : saveStates[activeDocument.path] ?? 'pending'
+                }`}
                 onClick={() => void saveFile()}
-                disabled={activeDocument.content === activeDocument.savedContent}
-                title="Enregistrer maintenant (Ctrl S)"
+                disabled={
+                  activeDocument.content === activeDocument.savedContent ||
+                  saveStates[activeDocument.path] === 'saving' ||
+                  saveStates[activeDocument.path] === 'conflict'
+                }
+                title={
+                  saveStates[activeDocument.path] === 'error'
+                    ? 'Échec de la sauvegarde — cliquer pour réessayer'
+                    : 'Enregistrement automatique après une courte pause (Ctrl S pour enregistrer maintenant)'
+                }
               >
                 {activeDocument.content === activeDocument.savedContent
                   ? <><Icon name="check" /> Enregistré</>
-                  : <><span className="save-status-dot" aria-hidden="true" /> Enregistrement…</>}
+                  : saveStates[activeDocument.path] === 'saving'
+                    ? <><span className="save-status-dot" aria-hidden="true" /> Enregistrement…</>
+                    : saveStates[activeDocument.path] === 'error'
+                      ? <>Échec — Réessayer</>
+                      : saveStates[activeDocument.path] === 'conflict'
+                        ? <>Conflit externe</>
+                        : <>En attente…</>}
               </button>
             </>
           ) : (
@@ -1402,6 +1587,31 @@ export default function App() {
             </div>
           )}
           {error && <div className="error-banner" role="alert">{error}</div>}
+          {activeDocument && saveStates[activeDocument.path] === 'conflict' && (
+            <div className="save-conflict-banner" role="alert">
+              <span>
+                Ce fichier a été modifié ailleurs. Tes changements ne sont pas écrasés.
+              </span>
+              <div>
+                <button type="button" onClick={() => void reloadConflictedDocument(activeDocument.path)}>
+                  Recharger le fichier
+                </button>
+                <button
+                  type="button"
+                  className="save-conflict-overwrite"
+                  onClick={() => void saveFile(activeDocument.path, true)}
+                >
+                  Écraser avec mes changements
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void closeDocument(activeDocument.path, true)}
+                >
+                  Garder la copie et fermer
+                </button>
+              </div>
+            </div>
+          )}
           {wordpressSuccess && (
             <div className="success-banner" role="status">
               Brouillon « {wordpressSuccess.title} » créé sur WordPress : {wordpressSuccess.url}
@@ -1734,6 +1944,30 @@ export default function App() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+      {recoveryPrompt && (
+        <div className="create-entry-backdrop recovery-backdrop">
+          <section
+            className="create-entry-dialog recovery-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="recovery-title"
+            aria-describedby="recovery-description"
+          >
+            <h2 id="recovery-title">Récupérer une version précédente ?</h2>
+            <p id="recovery-description">
+              Plumelier a retrouvé des modifications non enregistrées pour
+              « {recoveryPrompt.path.split(/[\\/]/).at(-1)} ».
+              Veux-tu restaurer cette version ou l’ignorer ?
+            </p>
+            <div className="create-entry-actions">
+              <button type="button" onClick={discardRecoveryDraft}>Ignorer</button>
+              <button className="primary" type="button" onClick={restoreRecoveryDraft}>
+                Restaurer la version
+              </button>
+            </div>
+          </section>
         </div>
       )}
       {markdownHelpOpen && <MarkdownHelp onClose={() => setMarkdownHelpOpen(false)} />}

@@ -6,8 +6,14 @@ contextBridge.exposeInMainWorld('workspace', {
   openFile: () => ipcRenderer.invoke('workspace:open-file'),
   openDroppedFile: (filePath: string) =>
     ipcRenderer.invoke('workspace:open-dropped-file', filePath),
-  writeExternal: (filePath: string, content: string) =>
-    ipcRenderer.invoke('workspace:write-external', filePath, content),
+  writeExternal: (
+    filePath: string,
+    content: string,
+    expectedContent: string,
+    overwrite = false
+  ) =>
+    ipcRenderer.invoke('workspace:write-external', filePath, content, expectedContent, overwrite) as
+      Promise<boolean>,
   onOpenFile: (callback: () => void) => {
     const listener = () => callback()
     ipcRenderer.on('menu:open-file', listener)
@@ -81,8 +87,9 @@ contextBridge.exposeInMainWorld('workspace', {
   search: (directory: string, query: string) =>
     ipcRenderer.invoke('workspace:search', directory, query),
   read: (filePath: string) => ipcRenderer.invoke('workspace:read', filePath),
-  write: (filePath: string, content: string) =>
-    ipcRenderer.invoke('workspace:write', filePath, content),
+  write: (filePath: string, content: string, expectedContent: string, overwrite = false) =>
+    ipcRenderer.invoke('workspace:write', filePath, content, expectedContent, overwrite) as
+      Promise<boolean>,
   create: (directory: string, name: string, kind: 'file' | 'directory', content = '') =>
     ipcRenderer.invoke('workspace:create', directory, name, kind, content),
   move: (sourcePath: string, destinationDirectory: string) =>

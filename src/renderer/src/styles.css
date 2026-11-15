@@ -258,6 +258,8 @@ kbd {
 .save-status.saved { background: var(--accent-soft); color: var(--accent-text); }
 .save-status.pending { border-color: color-mix(in srgb, var(--warning) 35%, transparent); background: color-mix(in srgb, var(--warning) 12%, transparent); color: var(--warning); }
 .save-status.pending:hover { background: color-mix(in srgb, var(--warning) 20%, transparent); }
+.save-status.error { border-color: color-mix(in srgb, var(--danger) 35%, transparent); background: var(--danger-soft); color: var(--danger); }
+.save-status.conflict { border-color: color-mix(in srgb, var(--danger) 35%, transparent); background: var(--danger-soft); color: var(--danger); }
 .save-status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .35; } }
 .unsaved { color: var(--warning); }
@@ -821,6 +823,30 @@ kbd {
 }
 .error-banner { border-color: color-mix(in srgb, var(--danger) 35%, transparent); background: var(--danger-soft); color: var(--danger); }
 .success-banner { max-width: min(700px, 80%); border-color: color-mix(in srgb, var(--accent) 35%, transparent); background: var(--success-soft); color: var(--accent-text); }
+.save-conflict-banner {
+  position: absolute;
+  z-index: 4;
+  bottom: 18px;
+  left: 18px;
+  display: grid;
+  max-width: min(760px, 75%);
+  gap: 10px;
+  padding: 12px 15px;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--danger-soft);
+  box-shadow: var(--shadow-md);
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.save-conflict-banner > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.save-conflict-banner button { min-height: 30px; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent); border-radius: var(--radius-sm); background: var(--bg-surface); color: var(--text); font-size: 12px; font-weight: 600; }
+.save-conflict-banner button:hover { background: var(--bg-hover); }
+.save-conflict-banner .save-conflict-overwrite { border-color: var(--danger); background: var(--danger); color: #fff; }
+.save-conflict-banner .save-conflict-overwrite:hover { filter: brightness(.92); }
+.recovery-backdrop { z-index: 30; }
+.recovery-dialog p { margin: 0 0 18px; color: var(--text-muted); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
 .create-entry-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 20px; background: var(--overlay); backdrop-filter: blur(4px); }
 .create-entry-dialog { width: min(100%, 420px); padding: 26px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-lg); color: var(--text); animation: menu-in 160ms ease-out; }
 .wordpress-dialog { width: min(100%, 470px); }

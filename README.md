@@ -34,7 +34,9 @@ GitHub Actions runs the tests and production build on pushes and pull requests.
 - Keep multiple notes open in tabs, close all tabs except the active one, and view two documents side by side.
 - Create folders and `.md` files.
 - Create Markdown templates, manage them from the explorer, or turn an existing file into a template using its context menu (right-click). Templates are available in all workspaces and can be used when creating a file.
-- Edit and save files with `Ctrl+S` or `Cmd+S`.
+- Save edits automatically after a short pause, or immediately with `Ctrl+S` /
+  `Cmd+S`. Recover drafts after an unexpected close and choose whether to reload
+  or overwrite when a file changes outside Plumelier.
 - Print the active note with `Ctrl+P` or `Cmd+P`, from the File menu or toolbar.
 - Customize the Plumelier logo color by clicking the logo; the choice is saved on this device.
 - Write directly in a formatted view, with a toolbar for headings, bold, italics, lists, quotes, and code blocks.
