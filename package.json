@@ -1,6 +1,6 @@
 {
   "name": "plumelier",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "productName": "Plumelier",
   "description": "Editeur Markdown de bureau avec prise en charge de Mermaid",
   "author": "Fred <fred@lagage.fr>",
