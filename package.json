@@ -9,7 +9,7 @@
   "license": "MIT",
   "main": "./out/main/index.js",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=26.0.0"
   },
   "scripts": {
     "dev": "electron-vite dev",
@@ -98,5 +98,8 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Plumelier"
     }
+  },
+  "allowScripts": {
+    "electron-winstaller@5.4.0": true
   }
 }

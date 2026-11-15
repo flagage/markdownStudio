@@ -5,12 +5,22 @@ preview, and Mermaid diagram rendering.
 
 ## Getting started
 
-Requirement: Node.js 22.12 or later.
+Requirement: Node.js 26 LTS or later.
 
 ```sh
 npm install
 npm run dev
 ```
+
+## Tests
+
+Run the automated test suite with:
+
+```sh
+npm test
+```
+
+GitHub Actions runs the tests and production build on pushes and pull requests.
 
 ## Features
 
@@ -58,7 +68,7 @@ Copyright (c) 2026 Fred <fred@lagage.fr>
 
 ## Installers
 
-Node.js 22.12 or later is required to build the packages.
+Node.js 26 LTS or later is required to build the packages.
 
 - Linux x64: `npm run dist:linux` creates an AppImage and a `.deb` package in `release/`.
 - Windows x64: `npm run dist:win` creates an NSIS `.exe` installer in `release/`. To build on Linux, use the GitHub Actions workflow below or a Windows environment.
