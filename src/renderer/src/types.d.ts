@@ -1,3 +1,20 @@
+declare module '*?raw' {
+  const content: string
+  export default content
+}
+
+declare module 'nspell' {
+  interface SpellChecker {
+    correct(word: string): boolean
+    suggest(word: string): string[]
+  }
+
+  export default function nspell(
+    aff: string | Uint8Array,
+    dic: string | Uint8Array
+  ): SpellChecker
+}
+
 interface WorkspaceEntry {
   name: string
   path: string

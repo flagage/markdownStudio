@@ -44,6 +44,7 @@ GitHub Actions runs the tests and production build on pushes and pull requests.
 - Switch between visual editing and raw Markdown at any time.
 - Open **Aide Markdown** from the application menu for syntax examples and a list of features supported by the visual editor.
 - Use emoji shortcodes such as `:joy:` in Markdown; they render as emoji in the visual editor. Footnotes, heading IDs, definition lists, highlighting, subscripts, and superscripts are not currently rendered visually.
+- Activate **Apprentissage** in the writing toolbar for a fully local French writing assistant. It suggests visible corrections for common spelling, grammar, conjugation, agreement, capitalization, and punctuation mistakes, and explains the rule in simple terms. Corrections are applied only after confirmation; no document text is sent outside the application.
 - Insert one of the available Mermaid templates at the cursor from the context menu (right-click).
 - Edit Mermaid diagrams in the document and switch their blocks between preview and code.
 - Render Mermaid `xychart-beta` charts even when series have different lengths: rendering is limited to categories with a value in every series, and skipped points are reported.

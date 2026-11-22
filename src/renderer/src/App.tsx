@@ -1197,6 +1197,7 @@ export default function App() {
           <MarkdownEditor
             key={document.path}
             value={document.content}
+            savedValue={document.savedContent}
             onChange={(content) => updateDocument(document.path, content)}
             findRequest={activePath === document.path ? pageFindRequest : null}
             findQuery={pageSearchQuery}

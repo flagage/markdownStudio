@@ -18,6 +18,7 @@ import { convertEmojiShortcodes, getEmojiShortcode } from './markdownEmoji'
 import MermaidDiagram from './MermaidDiagram'
 import { getMermaidSyntaxHelp, mermaidTemplates } from './mermaidTemplates'
 import { markdownColumnsTokenizer } from '../../shared/columnsMarkdown'
+import { analyzeFrenchText, type FrenchCorrection } from './frenchWritingAssistant'
 
 interface SearchHighlightState {
   query: string
@@ -25,6 +26,67 @@ interface SearchHighlightState {
 }
 
 const searchHighlightPluginKey = new PluginKey<SearchHighlightState>('searchHighlight')
+
+const frenchCorrectionHighlightPluginKey = new PluginKey<DecorationSet>('frenchCorrectionHighlight')
+
+function createFrenchCorrectionDecorations(
+  doc: Parameters<typeof DecorationSet.create>[0],
+  corrections: FrenchCorrection[]
+) {
+  const remaining = new Map<string, number>()
+  const decorations: Decoration[] = []
+
+  doc.descendants((node, position) => {
+    if (!node.isTextblock) return
+    node.descendants((child, childPosition) => {
+      if (!child.isText || !child.text) return
+      const textPosition = position + 1 + childPosition
+      for (const correction of corrections) {
+        const word = correction.original
+        if (!word) continue
+        const occurrence = remaining.get(correction.id) ?? 0
+        const fromInText = child.text.indexOf(word, occurrence)
+        if (fromInText < 0) continue
+        decorations.push(Decoration.inline(
+          textPosition + fromInText,
+          textPosition + fromInText + word.length,
+          {
+            class: `french-correction-highlight correction-${correction.category}`,
+            title: `${correction.category} : ${correction.explanation}`
+          }
+        ))
+        remaining.set(correction.id, fromInText + word.length)
+      }
+    })
+  })
+
+  return DecorationSet.create(doc, decorations)
+}
+
+const FrenchCorrectionHighlight = Extension.create({
+  name: 'frenchCorrectionHighlight',
+
+  addProseMirrorPlugins() {
+    return [new Plugin<DecorationSet>({
+      key: frenchCorrectionHighlightPluginKey,
+      state: {
+        init: () => DecorationSet.empty,
+        apply: (transaction, current, _oldState, newState) => {
+          const corrections: unknown = transaction.getMeta(frenchCorrectionHighlightPluginKey)
+          if (Array.isArray(corrections)) {
+            return createFrenchCorrectionDecorations(newState.doc, corrections as FrenchCorrection[])
+          }
+          return transaction.docChanged
+            ? current.map(transaction.mapping, newState.doc)
+            : current
+        }
+      },
+      props: {
+        decorations: (state) => frenchCorrectionHighlightPluginKey.getState(state) ?? null
+      }
+    })]
+  }
+})
 
 function createSearchHighlightDecorations(doc: Parameters<typeof DecorationSet.create>[0], query: string) {
   if (!query) return DecorationSet.empty
@@ -454,6 +516,7 @@ function getPastedImage(event: ClipboardEvent | React.ClipboardEvent): File | nu
 
 export default function MarkdownEditor({
   value,
+  savedValue,
   onChange,
   findRequest,
   findQuery,
@@ -468,6 +531,7 @@ export default function MarkdownEditor({
   onAutoFocus
 }: {
   value: string
+  savedValue?: string
   onChange: (markdown: string) => void
   findRequest: {
     query: string
@@ -499,11 +563,26 @@ export default function MarkdownEditor({
   const [selectedMermaidTemplateId, setSelectedMermaidTemplateId] = useState('flowchart-v2')
   const [rawMarkdownMode, setRawMarkdownMode] = useState(false)
   const [outlineOpen, setOutlineOpen] = useState(false)
+  const [correctionMode, setCorrectionMode] = useState(() =>
+    window.localStorage.getItem('markdown-studio-french-correction') === 'true'
+  )
+  const [ignoredCorrections, setIgnoredCorrections] = useState<Set<string>>(new Set())
   const rawMarkdownEditorRef = useRef<HTMLTextAreaElement>(null)
   const documentOutline = useMemo(() => parseMarkdownHeadings(value), [value])
+  const frenchCorrections = useMemo(
+    () => correctionMode ? analyzeFrenchText(value) : [],
+    [correctionMode, value]
+  )
+  const visibleFrenchCorrections = frenchCorrections.filter(
+    (correction) => !ignoredCorrections.has(correction.id)
+  )
   // L’éditeur garde ses options du premier rendu : le collage lit le document courant ici.
   const pasteTargetRef = useRef({ documentPath, external })
   pasteTargetRef.current = { documentPath, external }
+
+  useEffect(() => {
+    setIgnoredCorrections(new Set())
+  }, [savedValue])
 
   async function savePastedImage(file: File) {
     const target = pasteTargetRef.current
@@ -534,6 +613,7 @@ export default function MarkdownEditor({
       EmojiShortcodes,
       MarkdownImage.configure({ baseUrl: imageBaseUrl }),
       SearchHighlight,
+      FrenchCorrectionHighlight,
       Markdown
     ],
     [imageBaseUrl]
@@ -587,6 +667,13 @@ export default function MarkdownEditor({
     if (searchHighlightPluginKey.getState(editor.state)?.query === query) return
     editor.view.dispatch(editor.state.tr.setMeta(searchHighlightPluginKey, query))
   }, [editor, findQuery])
+
+  useEffect(() => {
+    if (!editor) return
+    editor.view.dispatch(
+      editor.state.tr.setMeta(frenchCorrectionHighlightPluginKey, visibleFrenchCorrections)
+    )
+  }, [editor, visibleFrenchCorrections])
 
   useEffect(() => {
     if (!editor || !findRequest?.query) return
@@ -861,6 +948,30 @@ export default function MarkdownEditor({
     }
   }
 
+  function toggleCorrectionMode() {
+    const nextMode = !correctionMode
+    setCorrectionMode(nextMode)
+    window.localStorage.setItem('markdown-studio-french-correction', String(nextMode))
+    if (nextMode) setIgnoredCorrections(new Set())
+  }
+
+  function applyFrenchCorrection(correction: FrenchCorrection) {
+    if (value.slice(correction.from, correction.to) !== correction.original) return
+    onChange(
+      value.slice(0, correction.from) +
+      correction.replacement +
+      value.slice(correction.to)
+    )
+  }
+
+  function ignoreFrenchCorrection(correction: FrenchCorrection) {
+    setIgnoredCorrections((current) => {
+      const next = new Set(current)
+      next.add(correction.id)
+      return next
+    })
+  }
+
   function toggleMarkdownMode() {
     if (!rawMarkdownMode) {
       setRawMarkdownMode(true)
@@ -875,6 +986,49 @@ export default function MarkdownEditor({
     })
     setRawMarkdownMode(false)
   }
+
+  const frenchCorrectionPanel = correctionMode ? (
+    <aside className="french-correction-panel" aria-label="Corrections françaises">
+      <div className="french-correction-header">
+        <div>
+          <strong>Mode apprentissage</strong>
+          <span>Analyse locale · aucune donnée envoyée</span>
+        </div>
+        <span className="french-correction-count" aria-live="polite">
+          {visibleFrenchCorrections.length}
+        </span>
+      </div>
+      {visibleFrenchCorrections.length === 0 ? (
+        <p className="french-correction-empty">
+          Aucune correction simple détectée pour le moment.
+        </p>
+      ) : (
+        <div className="french-correction-list">
+          {visibleFrenchCorrections.slice(0, 30).map((correction) => (
+            <article className="french-correction-card" key={correction.id}>
+              <span className={`french-correction-category category-${correction.category}`}>
+                {correction.category}
+              </span>
+              <p className="french-correction-change">
+                <del>{correction.original || '(espace manquant)'}</del>
+                <span aria-hidden="true">→</span>
+                <strong>{correction.replacement || '(supprimer)'}</strong>
+              </p>
+              <p className="french-correction-explanation">{correction.explanation}</p>
+              <div className="french-correction-actions">
+                <button type="button" className="primary" onClick={() => applyFrenchCorrection(correction)}>
+                  Corriger
+                </button>
+                <button type="button" onClick={() => ignoreFrenchCorrection(correction)}>
+                  Plus tard
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </aside>
+  ) : null
 
   return (
     <div className="wysiwyg-editor">
@@ -897,6 +1051,15 @@ export default function MarkdownEditor({
             <button type="button" title="Insérer deux colonnes de texte" onClick={insertColumns}>Colonnes</button>
           </>
         )}
+        <button
+          type="button"
+          className={`correction-mode-toggle ${correctionMode ? 'active' : ''}`}
+          title="Activer ou désactiver les indications d’orthographe et de grammaire"
+          aria-pressed={correctionMode}
+          onClick={toggleCorrectionMode}
+        >
+          Apprentissage
+        </button>
         <button
           type="button"
           className={`mode-toggle ${rawMarkdownMode ? 'active' : ''}`}
@@ -942,32 +1105,36 @@ export default function MarkdownEditor({
       {imageError && <div className="image-error" role="alert">{imageError}</div>}
       <div className={`writing-surface ${rawMarkdownMode ? 'raw-markdown-surface' : ''}`}>
         {rawMarkdownMode ? (
-          <>
-            <textarea
-              ref={rawMarkdownEditorRef}
-              className="raw-markdown-editor"
-              aria-label="Markdown brut"
-              spellCheck={false}
-              value={value}
-              onChange={(event) => onChange(event.target.value)}
-              onPaste={(event) => {
-                const file = getPastedImage(event)
-                if (!file) return
-                event.preventDefault()
-                const textarea = event.currentTarget
-                const { selectionStart, selectionEnd } = textarea
-                void savePastedImage(file).then((image) => {
-                  const markdown = `![${image.name}](${image.relativePath})`
-                  onChange(textarea.value.slice(0, selectionStart) + markdown + textarea.value.slice(selectionEnd))
-                  setImageError(null)
-                }).catch((reason: unknown) => {
-                  setImageError(reason instanceof Error ? reason.message : String(reason))
-                })
-              }}
-            />
+          <div className={`raw-writing-layout ${correctionMode ? 'with-corrections' : ''}`}>
+            <div className="raw-writing-editor">
+              <textarea
+                ref={rawMarkdownEditorRef}
+                className="raw-markdown-editor"
+                aria-label="Markdown brut"
+                spellCheck={false}
+                value={value}
+                onChange={(event) => onChange(event.target.value)}
+                onPaste={(event) => {
+                  const file = getPastedImage(event)
+                  if (!file) return
+                  event.preventDefault()
+                  const textarea = event.currentTarget
+                  const { selectionStart, selectionEnd } = textarea
+                  void savePastedImage(file).then((image) => {
+                    const markdown = `![${image.name}](${image.relativePath})`
+                    onChange(textarea.value.slice(0, selectionStart) + markdown + textarea.value.slice(selectionEnd))
+                    setImageError(null)
+                  }).catch((reason: unknown) => {
+                    setImageError(reason instanceof Error ? reason.message : String(reason))
+                  })
+                }}
+              />
+            </div>
+            {frenchCorrectionPanel}
             <pre className="raw-markdown-print">{value}</pre>
-          </>
+          </div>
         ) : (
+          <div className={`writing-correction-layout ${correctionMode ? 'with-corrections' : ''}`}>
           <div className="visual-editor-surface" onContextMenu={showContextMenu}>
             <div className="visual-editor-main">
               <EditorContent editor={editor} />
@@ -1124,6 +1291,8 @@ export default function MarkdownEditor({
                 </section>
               </div>
             )}
+          </div>
+          {frenchCorrectionPanel}
           </div>
         )}
       </div>
